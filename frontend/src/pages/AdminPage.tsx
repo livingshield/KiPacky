@@ -228,10 +228,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
     }
 
     // 2. Neuzavřené směny (Chybí odchod)
-    if (attendanceLogs && attendanceLogs.length > 0) {
+    if (logs && logs.length > 0) {
       const nowMs = Date.now();
       const empLastLogMap: Record<number, AttendanceLogItem> = {};
-      attendanceLogs.forEach((l) => {
+      logs.forEach((l) => {
         if (!empLastLogMap[l.employeeId] || new Date(l.timestamp).getTime() > new Date(empLastLogMap[l.employeeId].timestamp).getTime()) {
           empLastLogMap[l.employeeId] = l;
         }
@@ -280,7 +280,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
     }
 
     return list;
-  }, [reportData, attendanceLogs, productionLogs, employees]);
+  }, [reportData, logs, productionLogs, employees]);
 
   useEffect(() => {
     loadEmployees();
