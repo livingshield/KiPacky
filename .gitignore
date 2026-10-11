@@ -1,0 +1,82 @@
+# ==========================================
+# Vite / Frontend build artifacts & dependencies
+# ==========================================
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+.vite/
+frontend/.vite/
+*.local
+
+# Frontend compiled build outputs in backend wwwroot
+backend/wwwroot/*
+!backend/wwwroot/.gitkeep
+
+# ==========================================
+# .NET / C# build artifacts & publish
+# ==========================================
+bin/
+obj/
+backend/bin/
+backend/obj/
+publish/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.dll
+*.pdb
+
+# ==========================================
+# ASPONE hosting rules / Executables
+# ==========================================
+*.exe
+*.exe.bak
+
+# ==========================================
+# Backups, archives & temporary files
+# ==========================================
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+*backup*
+*Backup*
+*.bak
+*.tmp
+*.temp
+
+# ==========================================
+# Environment variables & secrets
+# ==========================================
+.env
+.env.local
+.env.*.local
+*.env
+appsettings.Production.json
+appsettings.local.json
+appsettings.*.local.json
+
+# ==========================================
+# IDE & Operating System files
+# ==========================================
+.vs/
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store
+[Ee]xpress/
+*.swp
+*~
+
+# ==========================================
+# Logs
+# ==========================================
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
