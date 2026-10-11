@@ -19,6 +19,7 @@ import {
   subscribeOfflineQueue,
   OfflineQueueItem,
 } from '../utils/offlineQueue';
+import { GREENBERG_LOGO } from '../assets/logoBase64';
 
 const INACTIVITY_TIMEOUT_SECONDS = 60;
 
@@ -404,12 +405,12 @@ export const KioskPage: React.FC = () => {
       )}
 
       {/* Horní stavová lišta (sekce 8.2) */}
-      <div className="flex items-center justify-between w-full mb-4 px-3.5 py-2.5 rounded-[16px] bg-[#193F34] border border-[#426456] shadow-sm">
+      <div className="flex items-center justify-between w-full mb-2 sm:mb-3 px-3 py-2 rounded-[16px] bg-[#193F34] border border-[#426456] shadow-sm">
         <div className="flex items-center gap-2.5">
           <img
-            src="greenberg_logo.png"
+            src={GREENBERG_LOGO}
             alt="Greenberg"
-            className="h-7 w-auto object-contain brightness-0 invert opacity-95 shrink-0"
+            className="h-8 w-auto object-contain shrink-0 drop-shadow-sm"
           />
           <div className="h-6 w-px bg-[#426456]" />
           <div className="flex items-center gap-1.5">
@@ -480,8 +481,8 @@ export const KioskPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Hlavní obsah podle stavu */}
-      <div className="flex-1 flex items-center justify-center w-full">
+      {/* Hlavní obsah podle stavu - kompaktnější vertikální vycentrování */}
+      <div className="flex-1 flex flex-col items-center justify-center w-full py-1">
         {successResponse ? (
           <SuccessScreen response={successResponse} onFinished={handleReset} />
         ) : statusData ? (
@@ -510,7 +511,7 @@ export const KioskPage: React.FC = () => {
       </div>
 
       {/* Spodní zápatí kiosku */}
-      <div className="text-center text-xs text-[#55645B] w-full pt-4 pb-1 flex items-center justify-between">
+      <div className="text-center text-xs text-[#55645B] w-full pt-2 pb-1 flex items-center justify-between">
         <span>Kipáčky • Greenberg</span>
         {statusData && (
           <span className="text-[11px] text-[#C9DDD0]">

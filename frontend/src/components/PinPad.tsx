@@ -55,7 +55,7 @@ export const PinPad: React.FC<PinPadProps> = ({
   return (
     <div className="flex flex-col items-center justify-center w-full max-w-[420px] mx-auto px-4 select-none">
       {/* 4. Podnadpis / instrukce */}
-      <p className="text-sm sm:text-base font-heading font-semibold text-[#F7F3E9] mb-4 text-center">
+      <p className="text-sm sm:text-base font-heading font-semibold text-[#F7F3E9] mb-3 text-center">
         Zadejte svůj 4místný osobní PIN
       </p>
 
