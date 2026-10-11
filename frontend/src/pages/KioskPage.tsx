@@ -405,19 +405,27 @@ export const KioskPage: React.FC = () => {
 
       {/* Horní stavová lišta (sekce 8.2) */}
       <div className="flex items-center justify-between w-full mb-4 px-3.5 py-2.5 rounded-[16px] bg-[#193F34] border border-[#426456] shadow-sm">
-        <div className="flex items-center gap-2">
-          <div
-            className={`w-2.5 h-2.5 rounded-full ${
-              isOnline ? 'bg-[#34C790] shadow-sm shadow-[#34C790]/50' : 'bg-[#D7BE97]'
-            }`}
+        <div className="flex items-center gap-2.5">
+          <img
+            src="greenberg_logo.png"
+            alt="Greenberg"
+            className="h-7 w-auto object-contain brightness-0 invert opacity-95 shrink-0"
           />
-          <div className="flex flex-col">
-            <span className="text-[11px] font-heading font-bold tracking-wider uppercase text-[#F7F3E9]">
-              {isOnline ? 'DOCHÁZKA ONLINE' : 'OFFLINE FRONTA'}
-            </span>
-            <span className="text-[10px] text-[#C9DDD0]/80 font-medium">
-              Greenberg Nepomuk
-            </span>
+          <div className="h-6 w-px bg-[#426456]" />
+          <div className="flex items-center gap-1.5">
+            <div
+              className={`w-2 h-2 rounded-full ${
+                isOnline ? 'bg-[#34C790] shadow-sm shadow-[#34C790]/50' : 'bg-[#D7BE97]'
+              }`}
+            />
+            <div className="flex flex-col">
+              <span className="text-[11px] font-heading font-bold tracking-wider uppercase text-[#F7F3E9] leading-tight">
+                {isOnline ? 'DOCHÁZKA ONLINE' : 'OFFLINE FRONTA'}
+              </span>
+              <span className="text-[9.5px] text-[#C9DDD0]/80 font-medium leading-tight">
+                Nepomuk
+              </span>
+            </div>
           </div>
 
           {/* Indikátor neodeslaných záznamů */}

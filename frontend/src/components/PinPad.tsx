@@ -54,27 +54,8 @@ export const PinPad: React.FC<PinPadProps> = ({
 
   return (
     <div className="flex flex-col items-center justify-center w-full max-w-[420px] mx-auto px-4 select-none">
-      {/* Greenberg Logo na průhledném pozadí */}
-      <div className="mb-4 flex flex-col items-center">
-        <img
-          src="greenberg_logo.png"
-          alt="Greenberg"
-          className="h-16 w-auto object-contain max-w-[220px] drop-shadow-sm"
-        />
-      </div>
-
-      {/* 2. Zmenšený centrální indikátor zámku */}
-      <div className="w-12 h-12 rounded-[14px] bg-[#285446] border border-[#426456] flex items-center justify-center mb-3 shadow-md">
-        <Lock className="w-6 h-6 text-[#D7BE97]" />
-      </div>
-
-      {/* 3. Nadpis Manrope Bold */}
-      <h1 className="text-2xl sm:text-[28px] font-heading font-extrabold tracking-tight text-[#F7F3E9] mb-1 text-center">
-        Pracovní docházka
-      </h1>
-
-      {/* 4. Podnadpis */}
-      <p className="text-[15px] font-medium text-[#C9DDD0] mb-4 text-center">
+      {/* 4. Podnadpis / instrukce */}
+      <p className="text-sm sm:text-base font-heading font-semibold text-[#F7F3E9] mb-4 text-center">
         Zadejte svůj 4místný osobní PIN
       </p>
 
