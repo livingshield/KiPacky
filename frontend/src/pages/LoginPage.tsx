@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Shield, KeyRound, User, ArrowLeft } from 'lucide-react';
 import { adminLogin } from '../api/client';
+import { GREENBERG_LOGO } from '../assets/logoBase64';
+import { APP_VERSION } from '../version';
 
 interface LoginPageProps {
   onLoginSuccess: (username: string) => void;
@@ -42,7 +44,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToKi
 
         <div className="text-center mb-8 flex flex-col items-center">
           <img
-            src="greenberg_logo.png"
+            src={GREENBERG_LOGO}
             alt="Greenberg"
             className="h-14 w-auto object-contain max-w-[200px] mb-4"
           />
@@ -50,7 +52,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToKi
             Kípačky – Správa
           </h2>
           <p className="text-xs font-sans text-[#55645B] mt-1">
-            Greenberg Nepomuk • Administrační rozhraní
+            Greenberg Nepomuk • Administrační rozhraní v{APP_VERSION}
           </p>
         </div>
 

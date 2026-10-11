@@ -20,6 +20,7 @@ import {
   OfflineQueueItem,
 } from '../utils/offlineQueue';
 import { GREENBERG_LOGO } from '../assets/logoBase64';
+import { APP_VERSION } from '../version';
 
 const INACTIVITY_TIMEOUT_SECONDS = 60;
 
@@ -407,11 +408,14 @@ export const KioskPage: React.FC = () => {
       {/* Horní stavová lišta (sekce 8.2) */}
       <div className="flex items-center justify-between w-full mb-2 sm:mb-3 px-3 py-2 rounded-[16px] bg-[#193F34] border border-[#426456] shadow-sm">
         <div className="flex items-center gap-2.5">
-          <img
-            src={GREENBERG_LOGO}
-            alt="Greenberg"
-            className="h-8 w-auto object-contain shrink-0 drop-shadow-sm"
-          />
+          {/* Logo Greenberg na světlém podkladu pro perfektní čitelnost textu */}
+          <div className="bg-white/95 px-2 py-1 rounded-[8px] flex items-center justify-center shadow-xs">
+            <img
+              src={GREENBERG_LOGO}
+              alt="Greenberg"
+              className="h-6 w-auto object-contain shrink-0"
+            />
+          </div>
           <div className="h-6 w-px bg-[#426456]" />
           <div className="flex items-center gap-1.5">
             <div
@@ -512,13 +516,13 @@ export const KioskPage: React.FC = () => {
 
       {/* Spodní zápatí kiosku */}
       <div className="text-center text-xs text-[#55645B] w-full pt-2 pb-1 flex items-center justify-between">
-        <span>Kipáčky • Greenberg</span>
+        <span>Kípačky • Greenberg</span>
         {statusData && (
           <span className="text-[11px] text-[#C9DDD0]">
             Odhlášení za <strong className="text-[#D7BE97]">{secondsLeft} s</strong>
           </span>
         )}
-        <span>v1.0 Nepomuk</span>
+        <span>v{APP_VERSION} Nepomuk</span>
       </div>
     </div>
   );

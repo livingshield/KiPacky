@@ -67,6 +67,8 @@ import {
   DocumentConsentItem,
   PlannedShiftItem,
 } from '../types';
+import { GREENBERG_LOGO } from '../assets/logoBase64';
+import { APP_VERSION } from '../version';
 
 interface AdminPageProps {
   onLogout: () => void;
@@ -784,16 +786,21 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
       <header className="bg-[#193F34] border-b border-[#285446] sticky top-0 z-30 shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <img
-              src="greenberg_logo.png"
-              alt="Greenberg"
-              className="h-9 w-auto object-contain brightness-0 invert opacity-95"
-            />
+            <div className="bg-white/95 px-2 py-1 rounded-[8px] flex items-center justify-center shadow-xs">
+              <img
+                src={GREENBERG_LOGO}
+                alt="Greenberg"
+                className="h-6 w-auto object-contain shrink-0"
+              />
+            </div>
             <div className="border-l border-[#285446] pl-3 py-0.5">
               <span className="font-extrabold text-sm tracking-tight font-heading text-[#F7F3E9] block leading-tight">Greenberg</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#285446] text-[#D7BE97] font-semibold tracking-wider">
-                ADMIN & VÝROBA
-              </span>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#285446] text-[#D7BE97] font-semibold tracking-wider">
+                  ADMIN & VÝROBA
+                </span>
+                <span className="text-[10px] text-[#C9DDD0]/80 font-mono">v{APP_VERSION}</span>
+              </div>
             </div>
           </div>
 
