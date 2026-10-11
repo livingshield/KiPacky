@@ -376,15 +376,15 @@ export const KioskPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-between py-4 px-4 bg-slate-900 text-slate-100">
+    <div className="min-h-screen flex flex-col justify-between py-3 px-3 sm:py-4 sm:px-4 bg-[#102E26] text-[#F7F3E9] max-w-[460px] mx-auto w-full">
       {/* Toast notifikace o synchronizaci */}
       {syncToast && (
-        <div className="w-full max-w-lg mx-auto mb-3 bg-emerald-600 text-white font-bold py-2.5 px-4 rounded-2xl shadow-xl flex items-center justify-between text-sm animate-bounce z-50">
+        <div className="w-full mb-3 bg-[#16634D] text-[#F7F3E9] font-heading font-bold py-2.5 px-4 rounded-[14px] shadow-xl flex items-center justify-between text-sm z-50 border border-[#34C790]/40">
           <span>{syncToast}</span>
           <button
             type="button"
             onClick={() => setSyncToast(null)}
-            className="text-white/80 hover:text-white ml-2 text-xs font-semibold cursor-pointer"
+            className="text-[#F7F3E9]/80 hover:text-white ml-2 text-xs font-semibold cursor-pointer"
           >
             ✕
           </button>
@@ -393,31 +393,32 @@ export const KioskPage: React.FC = () => {
 
       {/* Vizuální offline varování při absenci signálu */}
       {!isOnline && (
-        <div className="w-full max-w-lg mx-auto mb-3 bg-amber-600 text-slate-950 font-bold py-2.5 px-4 rounded-2xl shadow-xl flex items-center justify-between gap-2 border-2 border-amber-500 z-50">
+        <div className="w-full mb-3 bg-[#8E4B2F] text-[#F7F3E9] font-heading font-bold py-2.5 px-4 rounded-[14px] shadow-xl flex items-center justify-between gap-2 border border-[#B96543] z-50">
           <div className="flex items-center gap-2">
-            <WifiOff className="w-4 h-4 shrink-0" />
-            <span className="text-xs sm:text-sm">
+            <WifiOff className="w-4 h-4 shrink-0 text-[#D7BE97]" />
+            <span className="text-xs sm:text-sm font-sans font-medium">
               Jste offline. Záznamy se ukládají do telefonu a odešlou po připojení.
             </span>
           </div>
         </div>
       )}
 
-      {/* Horní hlavička kiosku */}
-      <div className="flex items-center justify-between max-w-sm w-full mx-auto mb-3">
+      {/* Horní stavová lišta (sekce 8.2) */}
+      <div className="flex items-center justify-between w-full mb-4 px-3.5 py-2.5 rounded-[16px] bg-[#193F34] border border-[#426456] shadow-sm">
         <div className="flex items-center gap-2">
           <div
             className={`w-2.5 h-2.5 rounded-full ${
-              isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+              isOnline ? 'bg-[#34C790] shadow-sm shadow-[#34C790]/50' : 'bg-[#D7BE97]'
             }`}
           />
-          <span
-            className={`text-xs font-semibold tracking-wider uppercase ${
-              isOnline ? 'text-emerald-400' : 'text-amber-400'
-            }`}
-          >
-            {isOnline ? 'Kiosk aktivní' : 'Offline fronta'}
-          </span>
+          <div className="flex flex-col">
+            <span className="text-[11px] font-heading font-bold tracking-wider uppercase text-[#F7F3E9]">
+              {isOnline ? 'DOCHÁZKA ONLINE' : 'OFFLINE FRONTA'}
+            </span>
+            <span className="text-[10px] text-[#C9DDD0]/80 font-medium">
+              Greenberg Nepomuk
+            </span>
+          </div>
 
           {/* Indikátor neodeslaných záznamů */}
           {offlineQueue.length > 0 && (
@@ -425,56 +426,54 @@ export const KioskPage: React.FC = () => {
               type="button"
               onClick={triggerSync}
               disabled={isSyncing || !isOnline}
-              className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 transition-colors cursor-pointer disabled:opacity-60"
+              className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-[#D7BE97] text-[#193F34] hover:bg-[#D7BE97]/90 transition-colors cursor-pointer disabled:opacity-60"
               title="Klikněte pro odeslání čekajících záznamů"
             >
-              <Zap className="w-3 h-3 text-amber-400" />
+              <Zap className="w-3 h-3 text-[#193F34]" />
               <span>{offlineQueue.length}</span>
               {isSyncing && <RefreshCw className="w-2.5 h-2.5 animate-spin ml-0.5" />}
             </button>
           )}
         </div>
 
-        {/* Pravá část hlavičky: Odpočet nečinnosti nebo Čas */}
+        {/* Pravá část hlavičky: Odpočet nečinnosti a Živý čas */}
         <div className="flex items-center gap-2 text-xs">
           {statusData && (
             <span
               onClick={resetInactivity}
-              className={`px-2 py-0.5 rounded-md text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer transition-colors ${
+              className={`px-2 py-0.5 rounded-[8px] text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer transition-colors ${
                 secondsLeft <= 15
-                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse'
-                  : 'bg-slate-800 text-slate-300 border border-slate-700'
+                  ? 'bg-[#A53F4E]/30 text-[#FFE0DE] border border-[#A53F4E]'
+                  : 'bg-[#285446] text-[#D7BE97] border border-[#426456]'
               }`}
               title="Automatické odhlášení nečinnosti. Klikněte pro prodloužení."
             >
-              <Clock className="w-3 h-3 text-sky-400" />
+              <Clock className="w-3 h-3 text-[#D7BE97]" />
               <span>{secondsLeft}s</span>
             </span>
           )}
 
-          <span className="flex items-center gap-1.5 text-slate-300">
-            <Calendar className="w-3.5 h-3.5 text-sky-400" />
-            <span className="capitalize">
+          <div className="flex items-center gap-1.5 tabular-nums font-mono text-[#F7F3E9] bg-[#285446] px-2.5 py-1 rounded-[8px] border border-[#426456] shadow-inner text-xs font-bold">
+            <Calendar className="w-3.5 h-3.5 text-[#D7BE97]" />
+            <span className="capitalize font-sans font-medium text-[11px] text-[#C9DDD0]">
               {currentTime.toLocaleDateString('cs-CZ', {
                 weekday: 'short',
                 day: 'numeric',
                 month: 'numeric',
               })}
             </span>
-          </span>
-          <span className="flex items-center gap-1 font-mono text-white bg-slate-800/90 px-2 py-0.5 rounded-md border border-slate-700/80 shadow-sm">
-            <span>
+            <span className="text-[#F7F3E9] font-bold ml-0.5">
               {currentTime.toLocaleTimeString('cs-CZ', {
                 hour: '2-digit',
                 minute: '2-digit',
               })}
             </span>
-          </span>
+          </div>
         </div>
       </div>
 
       {/* Hlavní obsah podle stavu */}
-      <div className="flex-1 flex items-center justify-center">
+      <div className="flex-1 flex items-center justify-center w-full">
         {successResponse ? (
           <SuccessScreen response={successResponse} onFinished={handleReset} />
         ) : statusData ? (
@@ -503,14 +502,14 @@ export const KioskPage: React.FC = () => {
       </div>
 
       {/* Spodní zápatí kiosku */}
-      <div className="text-center text-xs text-slate-500 max-w-sm mx-auto w-full pt-3 flex items-center justify-between">
-        <span>Kípačky PWA</span>
+      <div className="text-center text-xs text-[#55645B] w-full pt-4 pb-1 flex items-center justify-between">
+        <span>Kipáčky • Greenberg</span>
         {statusData && (
-          <span className="text-[11px] text-slate-400">
-            Odhlášení za <strong className="text-sky-400">{secondsLeft} s</strong>
+          <span className="text-[11px] text-[#C9DDD0]">
+            Odhlášení za <strong className="text-[#D7BE97]">{secondsLeft} s</strong>
           </span>
         )}
-        <span>Verze 1.0</span>
+        <span>v1.0 Nepomuk</span>
       </div>
     </div>
   );

@@ -168,71 +168,71 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
     const piecesNum = parseInt(piecesStr || '0', 10);
 
     return (
-      <div className="flex flex-col w-full max-w-md mx-auto px-3 select-none">
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-2xl">
+      <div className="flex flex-col w-full max-w-[440px] mx-auto px-1 select-none">
+        <div className="bg-[#193F34] border border-[#426456] rounded-[20px] p-4 sm:p-5 shadow-2xl">
           <div className="flex items-center justify-between mb-4">
             <button
               type="button"
               onClick={() => setSubView('main')}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white px-2.5 py-1.5 rounded-lg bg-slate-800 cursor-pointer"
+              className="inline-flex items-center gap-1.5 text-xs font-heading font-semibold text-[#C9DDD0] hover:text-[#193F34] hover:bg-[#D7BE97] px-2.5 py-1.5 rounded-[10px] bg-[#285446] border border-[#426456] cursor-pointer transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
               Zpět
             </button>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <PackagePlus className="w-5 h-5 text-indigo-400" />
+            <h2 className="text-lg font-heading font-bold text-[#F7F3E9] flex items-center gap-2">
+              <PackagePlus className="w-5 h-5 text-[#D7BE97]" />
               Zapsat výrobu
             </h2>
-            <span className="text-xs text-slate-400">{statusData.fullName}</span>
+            <span className="text-xs text-[#C9DDD0]">{statusData.fullName}</span>
           </div>
 
           {errorMessage && (
-            <div className="mb-4 px-3 py-2 bg-rose-500/15 border border-rose-500/30 rounded-xl text-rose-300 text-xs text-center">
+            <div className="mb-4 px-3 py-2 bg-[#A53F4E]/20 border border-[#A53F4E] rounded-[12px] text-[#FFE0DE] text-xs text-center font-medium">
               {errorMessage}
             </div>
           )}
 
           <form onSubmit={handleProdFormSubmit} className="space-y-4">
-            {/* Krok 1: Zakázka */}
+            {/* 1. Vyberte zakázku (sekce 9.2) */}
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+              <label className="block text-xs font-heading font-bold uppercase tracking-wider text-[#C9DDD0] mb-1.5">
                 1. Vyberte zakázku
               </label>
               <select
                 value={selectedOrderId}
                 onChange={(e) => setSelectedOrderId(Number(e.target.value))}
-                className="w-full px-3.5 py-3 bg-slate-950 border border-slate-700 rounded-xl text-white font-semibold text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3.5 py-3 bg-[#102E26] border border-[#426456] rounded-[12px] text-[#F7F3E9] font-medium text-sm focus:outline-none focus:border-[#D7BE97]"
               >
                 {orders.map((ord) => (
-                  <option key={ord.id} value={ord.id}>
+                  <option key={ord.id} value={ord.id} className="bg-[#102E26] text-[#F7F3E9]">
                     {ord.name} {ord.targetPieces && ord.targetPieces > 0 ? `(Cíl: ${ord.completedPieces || 0} / ${ord.targetPieces} ks)` : ''}
                   </option>
                 ))}
               </select>
 
-              {/* Informace o cílovém objemu a rozpracovanosti vybrané zakázky (Fáze 5) */}
+              {/* Informace o cílovém objemu a rozpracovanosti (sekce 9.3) */}
               {(() => {
                 const currentOrder = orders.find((o) => o.id === selectedOrderId);
                 if (!currentOrder || !currentOrder.targetPieces || currentOrder.targetPieces <= 0) return null;
                 const percent = Math.min(100, currentOrder.percentDone || 0);
 
                 return (
-                  <div className="mt-2.5 p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-xs">
-                    <div className="flex items-center justify-between text-slate-300 mb-1.5 font-medium">
+                  <div className="mt-2.5 p-3 rounded-[12px] bg-[#102E26] border border-[#426456] text-xs">
+                    <div className="flex items-center justify-between text-[#C9DDD0] mb-1.5 font-medium">
                       <span>Postup plnění zakázky:</span>
-                      <span className="font-mono font-bold text-sky-400">
+                      <span className="font-mono font-bold text-[#D7BE97]">
                         {currentOrder.completedPieces || 0} / {currentOrder.targetPieces} ks ({percent}%)
                       </span>
                     </div>
-                    <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden mb-1">
+                    <div className="w-full bg-[#285446] rounded-full h-2.5 overflow-hidden mb-1">
                       <div
-                        className="bg-sky-500 h-2 rounded-full transition-all duration-500"
+                        className="bg-[#D7BE97] h-2.5 rounded-full transition-all duration-500"
                         style={{ width: `${percent}%` }}
                       />
                     </div>
                     {currentOrder.deadline && (
-                      <div className="text-[11px] text-amber-300/80 flex items-center gap-1 mt-1">
-                        <Clock className="w-3 h-3" />
+                      <div className="text-[11px] text-[#D7BE97]/90 flex items-center gap-1 mt-1 font-medium">
+                        <Clock className="w-3 h-3 text-[#D7BE97]" />
                         Termín dokončení: {new Date(currentOrder.deadline).toLocaleDateString('cs-CZ')}
                       </div>
                     )}
@@ -241,9 +241,9 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
               })()}
             </div>
 
-            {/* Krok 2: Operace */}
+            {/* 2. Vyberte operaci (sekce 9.4) */}
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+              <label className="block text-xs font-heading font-bold uppercase tracking-wider text-[#C9DDD0] mb-1.5">
                 2. Vyberte operaci
               </label>
               <div className="grid grid-cols-2 gap-2">
@@ -254,14 +254,14 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
                       key={op.id}
                       type="button"
                       onClick={() => setSelectedOpId(op.id)}
-                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      className={`p-3 rounded-[12px] border text-left transition-all cursor-pointer min-h-[64px] flex flex-col justify-between ${
                         isSel
-                          ? 'bg-indigo-600/25 border-indigo-400 text-white ring-1 ring-indigo-400'
-                          : 'bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-800/60'
+                          ? 'bg-[#285446] border-2 border-[#D7BE97] text-[#F7F3E9] shadow-md'
+                          : 'bg-[#102E26] border-[#426456] text-[#F7F3E9] hover:bg-[#285446]/50'
                       }`}
                     >
-                      <div className="font-bold text-xs leading-tight mb-1">{op.name}</div>
-                      <div className="text-[11px] text-indigo-300 font-mono">
+                      <div className="font-heading font-bold text-xs leading-tight mb-1">{op.name}</div>
+                      <div className="text-[11px] text-[#D7BE97] font-mono font-bold">
                         {op.ratePerPiece.toFixed(2)} Kč/ks • {op.normPerHour} ks/h
                       </div>
                     </button>
@@ -270,34 +270,34 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
               </div>
             </div>
 
-            {/* Krok 3: Počet hotových kusů */}
+            {/* 3. Počet vyrobených kusů (sekce 9.5 & 9.6) */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  3. Počet hotových kusů
+                <label className="text-xs font-heading font-bold uppercase tracking-wider text-[#C9DDD0]">
+                  3. Počet vyrobených kusů
                 </label>
                 {selectedOp && piecesNum > 0 && (
-                  <span className="text-xs text-indigo-300 font-mono">
+                  <span className="text-xs text-[#D7BE97] font-mono font-semibold">
                     ≈ {(piecesNum / selectedOp.normPerHour).toFixed(2)} normohodin
                   </span>
                 )}
               </div>
 
-              <div className="bg-slate-950 border-2 border-indigo-500/50 rounded-2xl py-3 px-4 text-center mb-2.5">
-                <span className="text-3xl font-extrabold font-mono text-white tracking-wider">
+              <div className="bg-[#102E26] border border-[#426456] rounded-[14px] py-3 px-4 text-center mb-2.5 shadow-inner">
+                <span className="text-3xl sm:text-[38px] font-heading font-extrabold font-mono text-[#F7F3E9] tracking-wider">
                   {piecesStr || '0'}
                 </span>
-                <span className="text-sm text-slate-400 ml-2">ks</span>
+                <span className="text-sm font-sans font-medium text-[#C9DDD0] ml-2">ks</span>
               </div>
 
-              {/* Rychlé přičítání */}
-              <div className="grid grid-cols-4 gap-1.5 mb-2">
+              {/* Rychlé přičítání (sekce 9.6) */}
+              <div className="grid grid-cols-4 gap-1.5 mb-2.5">
                 {[10, 50, 100].map((val) => (
                   <button
                     key={val}
                     type="button"
                     onClick={() => handleAddQuick(val)}
-                    className="py-2 rounded-xl bg-indigo-950/70 hover:bg-indigo-900/80 border border-indigo-700/40 text-indigo-300 font-bold text-xs cursor-pointer"
+                    className="py-2.5 rounded-[10px] bg-[#285446] hover:bg-[#285446]/80 border border-[#426456] text-[#D7BE97] font-heading font-bold text-xs cursor-pointer active:scale-95 transition-transform"
                   >
                     +{val}
                   </button>
@@ -305,20 +305,20 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
                 <button
                   type="button"
                   onClick={() => setPiecesStr('')}
-                  className="py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-300 font-semibold text-xs cursor-pointer"
+                  className="py-2.5 rounded-[10px] bg-[#432F32] hover:bg-[#52393d] border border-[#52393d] text-[#FFE0DE] font-heading font-bold text-xs cursor-pointer active:scale-95 transition-transform"
                 >
                   Vynulovat
                 </button>
               </div>
 
-              {/* Kompaktní numerická klávesnice */}
-              <div className="grid grid-cols-3 gap-1.5">
+              {/* Kompaktní numerická klávesnice (sekce 9.7) */}
+              <div className="grid grid-cols-3 gap-2">
                 {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
                   <button
                     key={d}
                     type="button"
                     onClick={() => handleDigit(d)}
-                    className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-indigo-600 text-white font-bold text-lg cursor-pointer transition-colors"
+                    className="h-[52px] rounded-[12px] bg-[#102E26] hover:bg-[#285446] active:bg-[#285446] active:border-[#D7BE97] border border-[#426456] text-[#F7F3E9] font-heading font-bold text-xl cursor-pointer transition-colors shadow-sm flex items-center justify-center"
                   >
                     {d}
                   </button>
@@ -326,31 +326,33 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
                 <button
                   type="button"
                   onClick={() => setPiecesStr('')}
-                  className="py-2.5 rounded-xl bg-slate-800/70 hover:bg-slate-700 text-slate-400 font-semibold text-xs cursor-pointer"
+                  className="h-[52px] rounded-[12px] bg-[#102E26]/80 hover:bg-[#285446] border border-[#426456] text-[#C9DDD0] font-heading font-semibold text-xs cursor-pointer flex items-center justify-center"
                 >
                   Smazat
                 </button>
                 <button
                   type="button"
                   onClick={() => handleDigit('0')}
-                  className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-indigo-600 text-white font-bold text-lg cursor-pointer"
+                  className="h-[52px] rounded-[12px] bg-[#102E26] hover:bg-[#285446] active:bg-[#285446] active:border-[#D7BE97] border border-[#426456] text-[#F7F3E9] font-heading font-bold text-xl cursor-pointer flex items-center justify-center"
                 >
                   0
                 </button>
                 <button
                   type="button"
                   onClick={() => setPiecesStr((p) => p.slice(0, -1))}
-                  className="py-2.5 rounded-xl bg-slate-800/70 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer"
+                  className="h-[52px] rounded-[12px] bg-[#102E26]/80 hover:bg-[#285446] border border-[#426456] text-[#C9DDD0] flex items-center justify-center cursor-pointer"
+                  title="Smazat poslední číslici"
                 >
                   <Delete className="w-5 h-5" />
                 </button>
               </div>
             </div>
 
+            {/* 8. Odeslat výrobu (sekce 9.8) */}
             <button
               type="submit"
               disabled={isSubmitting || piecesNum <= 0 || !selectedOrderId || !selectedOpId}
-              className="w-full py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold text-base flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+              className="w-full h-[62px] rounded-[14px] bg-[#9B623F] hover:bg-[#ad6e47] disabled:bg-[#43574E] disabled:text-[#ADBDB3] text-white font-heading font-extrabold text-base flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer"
             >
               <Send className="w-5 h-5" />
               {isSubmitting ? 'Ukládám...' : `Odeslat výrobu (${piecesNum} ks)`}
@@ -377,68 +379,68 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
     }
 
     return (
-      <div className="flex flex-col w-full max-w-md mx-auto px-3 select-none">
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-2xl">
+      <div className="flex flex-col w-full max-w-[440px] mx-auto px-1 select-none">
+        <div className="bg-[#193F34] border border-[#426456] rounded-[20px] p-4 sm:p-5 shadow-2xl">
           <div className="flex items-center justify-between mb-4">
             <button
               type="button"
               onClick={() => setSubView('main')}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white px-2.5 py-1.5 rounded-lg bg-slate-800 cursor-pointer"
+              className="inline-flex items-center gap-1.5 text-xs font-heading font-semibold text-[#C9DDD0] hover:text-[#193F34] hover:bg-[#D7BE97] px-2.5 py-1.5 rounded-[10px] bg-[#285446] border border-[#426456] cursor-pointer transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
               Zpět
             </button>
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <FileCheck2 className="w-5 h-5 text-amber-400" />
+            <h2 className="text-base font-heading font-bold text-[#F7F3E9] flex items-center gap-2">
+              <FileCheck2 className="w-5 h-5 text-[#D7BE97]" />
               Směrnice a BOZP
             </h2>
-            <span className="text-xs text-slate-400">{statusData.fullName}</span>
+            <span className="text-xs text-[#C9DDD0]">{statusData.fullName}</span>
           </div>
 
           <div className="space-y-3 max-h-[65vh] overflow-y-auto pr-1">
             {documents.map((doc) => (
               <div
                 key={doc.id}
-                className={`p-4 rounded-2xl border ${
+                className={`p-4 rounded-[16px] border ${
                   doc.needsConsent
-                    ? 'bg-amber-500/10 border-amber-500/40'
-                    : 'bg-slate-950/80 border-slate-800'
+                    ? 'bg-[#8E4B2F]/15 border-[#B96543]'
+                    : 'bg-[#102E26] border-[#426456]'
                 }`}
               >
                 <div className="flex items-start justify-between gap-2 mb-2">
-                  <h3 className="font-bold text-sm text-white">{doc.title}</h3>
+                  <h3 className="font-heading font-bold text-sm text-[#F7F3E9]">{doc.title}</h3>
                   {doc.needsConsent ? (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 whitespace-nowrap">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#A53F4E]/25 text-[#FFE0DE] border border-[#A53F4E] whitespace-nowrap">
                       Nutné potvrdit
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-400">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#16634D]/40 text-[#34C790]">
                       <CheckCircle2 className="w-3 h-3" />
                       Platné
                     </span>
                   )}
                 </div>
 
-                <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800 mb-3 space-y-2">
-                  <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-line">
+                <div className="bg-[#193F34] p-3 rounded-[12px] border border-[#426456] mb-3 space-y-2">
+                  <p className="text-xs text-[#C9DDD0] leading-relaxed whitespace-pre-line">
                     {doc.shortText || doc.content}
                   </p>
 
                   {doc.hasFullText && (
-                    <div className="flex items-center justify-between pt-1 border-t border-slate-800/80 w-full gap-2">
+                    <div className="flex items-center justify-between pt-1 border-t border-[#426456]/60 w-full gap-2">
                       <button
                         type="button"
                         onClick={() => setReadingDocId(doc.id)}
-                        className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-sky-400 hover:text-sky-300 transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1.5 text-[11px] font-heading font-semibold text-[#D7BE97] hover:underline transition-colors cursor-pointer"
                       >
-                        <FileText className="w-3.5 h-3.5 text-sky-400" />
+                        <FileText className="w-3.5 h-3.5 text-[#D7BE97]" />
                         <span>Číst plné znění směrnice</span>
                       </button>
                       <a
                         href={`./?doc=${doc.id}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-[11px] text-slate-500 hover:text-sky-300 flex items-center gap-1"
+                        className="text-[11px] text-[#C9DDD0]/60 hover:text-[#D7BE97] flex items-center gap-1"
                         title="Otevřít v nové záložce"
                       >
                         <ExternalLink className="w-3 h-3" />
@@ -448,9 +450,9 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
                 </div>
 
                 {doc.lastAgreedAt && (
-                  <div className="text-[11px] text-slate-400 mb-2">
+                  <div className="text-[11px] text-[#C9DDD0] mb-2 font-mono">
                     Naposledy potvrzeno:{' '}
-                    <strong className="text-slate-300">
+                    <strong className="text-[#F7F3E9]">
                       {new Date(doc.lastAgreedAt).toLocaleDateString('cs-CZ')}{' '}
                       {new Date(doc.lastAgreedAt).toLocaleTimeString('cs-CZ', {
                         hour: '2-digit',
@@ -464,10 +466,10 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
                   type="button"
                   disabled={confirmingDocId === doc.id}
                   onClick={() => handleConfirmDoc(doc.id)}
-                  className={`w-full py-2.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  className={`w-full py-2.5 px-4 rounded-[12px] font-heading font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
                     doc.needsConsent
-                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                      ? 'bg-[#16634D] hover:bg-[#1d775d] text-white shadow-md'
+                      : 'bg-[#285446] hover:bg-[#D7BE97] hover:text-[#193F34] text-[#F7F3E9]'
                   }`}
                 >
                   <CheckCircle2 className="w-4 h-4" />
@@ -508,33 +510,33 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
     };
 
     return (
-      <div className="flex flex-col w-full max-w-md mx-auto px-3 select-none">
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-2xl">
+      <div className="flex flex-col w-full max-w-[440px] mx-auto px-1 select-none">
+        <div className="bg-[#193F34] border border-[#426456] rounded-[20px] p-4 sm:p-5 shadow-2xl">
           <div className="flex items-center justify-between mb-4">
             <button
               type="button"
               onClick={() => setSubView('main')}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white px-2.5 py-1.5 rounded-lg bg-slate-800 cursor-pointer"
+              className="inline-flex items-center gap-1.5 text-xs font-heading font-semibold text-[#C9DDD0] hover:text-[#193F34] hover:bg-[#D7BE97] px-2.5 py-1.5 rounded-[10px] bg-[#285446] border border-[#426456] cursor-pointer transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
               Zpět
             </button>
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-sky-400" />
+            <h2 className="text-base font-heading font-bold text-[#F7F3E9] flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-[#D7BE97]" />
               Směny & Samoobslužná burza
             </h2>
-            <span className="text-xs text-slate-400">{statusData.fullName}</span>
+            <span className="text-xs text-[#C9DDD0]">{statusData.fullName}</span>
           </div>
 
           <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
             {/* Moje naplánované směny */}
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <h3 className="text-xs font-heading font-bold uppercase tracking-wider text-[#C9DDD0] mb-2 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#34C790]" />
                 Moje přihlášené směny ({upcomingShifts.length})
               </h3>
               {upcomingShifts.length === 0 ? (
-                <div className="text-xs text-slate-500 bg-slate-950/60 p-3 rounded-xl border border-slate-800 text-center">
+                <div className="text-xs text-[#C9DDD0]/70 bg-[#102E26] p-3 rounded-[12px] border border-[#426456] text-center font-medium">
                   Nemáte naplánovanou žádnou směnu.
                 </div>
               ) : (
@@ -542,21 +544,21 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
                   {upcomingShifts.map((s) => (
                     <div
                       key={s.id}
-                      className="p-3 bg-slate-950/90 border border-slate-800 rounded-xl flex items-center justify-between"
+                      className="p-3 bg-[#102E26] border border-[#426456] rounded-[12px] flex items-center justify-between"
                     >
                       <div>
-                        <div className="text-xs font-bold text-white">
+                        <div className="text-xs font-heading font-bold text-[#F7F3E9]">
                           {new Date(s.shiftDate).toLocaleDateString('cs-CZ', {
                             weekday: 'short',
                             day: 'numeric',
                             month: 'numeric',
                           })}
-                          <span className="ml-2 font-mono text-sky-400">
+                          <span className="ml-2 font-mono text-[#D7BE97]">
                             {s.startTime} – {s.endTime}
                           </span>
                         </div>
                         {s.orderName && (
-                          <div className="text-[11px] text-indigo-300 mt-0.5">
+                          <div className="text-[11px] text-[#C9DDD0] mt-0.5">
                             Zakázka: {s.orderName}
                           </div>
                         )}
@@ -565,7 +567,7 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
                         type="button"
                         disabled={claimingShiftId === s.id}
                         onClick={() => handleRelease(s.id)}
-                        className="px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-xs font-semibold cursor-pointer"
+                        className="px-2.5 py-1 rounded-[8px] bg-[#432F32] hover:bg-[#52393d] border border-[#52393d] text-[#FFE0DE] text-xs font-heading font-semibold cursor-pointer transition-colors"
                       >
                         {claimingShiftId === s.id ? 'Odlašuji...' : 'Uvolnit směnu'}
                       </button>
@@ -577,12 +579,12 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
 
             {/* Volné směny k rozebrání */}
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-amber-400 mb-2 flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-amber-400" />
+              <h3 className="text-xs font-heading font-bold uppercase tracking-wider text-[#D7BE97] mb-2 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-[#D7BE97]" />
                 Volné směny na burze ({openShifts.length})
               </h3>
               {openShifts.length === 0 ? (
-                <div className="text-xs text-slate-500 bg-slate-950/60 p-3 rounded-xl border border-slate-800 text-center">
+                <div className="text-xs text-[#C9DDD0]/70 bg-[#102E26] p-3 rounded-[12px] border border-[#426456] text-center font-medium">
                   V této chvíli nejsou vypsány žádné volné směny.
                 </div>
               ) : (
@@ -590,26 +592,26 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
                   {openShifts.map((s) => (
                     <div
                       key={s.id}
-                      className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-between"
+                      className="p-3 bg-[#285446] border border-[#D7BE97]/40 rounded-[12px] flex items-center justify-between"
                     >
                       <div>
-                        <div className="text-xs font-bold text-white">
+                        <div className="text-xs font-heading font-bold text-[#F7F3E9]">
                           {new Date(s.shiftDate).toLocaleDateString('cs-CZ', {
                             weekday: 'short',
                             day: 'numeric',
                             month: 'numeric',
                           })}
-                          <span className="ml-2 font-mono text-amber-300">
+                          <span className="ml-2 font-mono text-[#D7BE97]">
                             {s.startTime} – {s.endTime}
                           </span>
                         </div>
                         {s.orderName && (
-                          <div className="text-[11px] text-indigo-300 mt-0.5">
+                          <div className="text-[11px] text-[#C9DDD0] mt-0.5">
                             Zakázka: {s.orderName}
                           </div>
                         )}
                         {s.note && (
-                          <div className="text-[11px] text-slate-400 italic mt-0.5">
+                          <div className="text-[11px] text-[#C9DDD0]/80 italic mt-0.5">
                             {s.note}
                           </div>
                         )}
@@ -618,7 +620,7 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
                         type="button"
                         disabled={claimingShiftId === s.id}
                         onClick={() => handleClaim(s.id)}
-                        className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold shadow-md cursor-pointer transition-all"
+                        className="px-3 py-1.5 rounded-[10px] bg-[#D7BE97] hover:bg-[#c9b089] text-[#193F34] text-xs font-heading font-bold shadow-sm cursor-pointer transition-colors"
                       >
                         {claimingShiftId === s.id ? 'Zapisuji...' : 'Přihlásit se'}
                       </button>
@@ -653,26 +655,26 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
     };
 
     return (
-      <div className="flex flex-col w-full max-w-md mx-auto px-3 select-none">
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-2xl">
+      <div className="flex flex-col w-full max-w-[440px] mx-auto px-1 select-none">
+        <div className="bg-[#193F34] border border-[#426456] rounded-[20px] p-4 sm:p-5 shadow-2xl">
           <div className="flex items-center justify-between mb-4">
             <button
               type="button"
               onClick={() => setSubView('main')}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white px-2.5 py-1.5 rounded-lg bg-slate-800 cursor-pointer"
+              className="inline-flex items-center gap-1.5 text-xs font-heading font-semibold text-[#C9DDD0] hover:text-[#193F34] hover:bg-[#D7BE97] px-2.5 py-1.5 rounded-[10px] bg-[#285446] border border-[#426456] cursor-pointer transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
               Zpět
             </button>
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <User className="w-5 h-5 text-indigo-400" />
+            <h2 className="text-base font-heading font-bold text-[#F7F3E9] flex items-center gap-2">
+              <User className="w-5 h-5 text-[#D7BE97]" />
               Můj profil & Výplata
             </h2>
-            <span className="text-xs text-slate-400">{statusData.fullName}</span>
+            <span className="text-xs text-[#C9DDD0]">{statusData.fullName}</span>
           </div>
 
           {profileSuccessMsg && (
-            <div className="mb-4 px-3 py-2 bg-emerald-500/15 border border-emerald-500/30 rounded-xl text-emerald-300 text-xs text-center flex items-center justify-center gap-1.5">
+            <div className="mb-4 px-3 py-2 bg-[#16634D]/30 border border-[#16634D] rounded-[12px] text-[#34C790] text-xs text-center flex items-center justify-center gap-1.5 font-medium">
               <Check className="w-4 h-4" />
               {profileSuccessMsg}
             </div>
@@ -680,8 +682,8 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
 
           <form onSubmit={handleProfileSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1.5">
-                <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
+              <label className="block text-xs font-heading font-bold uppercase tracking-wider text-[#C9DDD0] mb-1 flex items-center gap-1.5">
+                <CreditCard className="w-3.5 h-3.5 text-[#D7BE97]" />
                 Číslo bankovního účtu (pro výplatu)
               </label>
               <input
@@ -690,17 +692,17 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
                 placeholder="např. 1234567890/0100"
                 value={profileBank}
                 onChange={(e) => setProfileBank(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3.5 py-2.5 bg-[#102E26] border border-[#426456] rounded-[10px] text-[#F7F3E9] font-mono text-sm focus:outline-none focus:border-[#D7BE97]"
               />
-              <span className="text-[11px] text-slate-500 mt-1 block">
+              <span className="text-[11px] text-[#C9DDD0]/70 mt-1 block">
                 Zadejte účet včetně kódu banky (např. 19-123456789/0800).
               </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1.5">
-                  <Phone className="w-3.5 h-3.5 text-sky-400" />
+                <label className="block text-xs font-heading font-bold uppercase tracking-wider text-[#C9DDD0] mb-1 flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-[#D7BE97]" />
                   Telefon
                 </label>
                 <input
@@ -708,13 +710,13 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
                   placeholder="+420 777 123 456"
                   value={profilePhone}
                   onChange={(e) => setProfilePhone(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 bg-[#102E26] border border-[#426456] rounded-[10px] text-[#F7F3E9] text-xs focus:outline-none focus:border-[#D7BE97]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1.5">
-                  <Mail className="w-3.5 h-3.5 text-sky-400" />
+                <label className="block text-xs font-heading font-bold uppercase tracking-wider text-[#C9DDD0] mb-1 flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-[#D7BE97]" />
                   E-mail
                 </label>
                 <input
@@ -722,15 +724,15 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
                   placeholder="brigadnik@email.cz"
                   value={profileEmail}
                   onChange={(e) => setProfileEmail(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 bg-[#102E26] border border-[#426456] rounded-[10px] text-[#F7F3E9] text-xs focus:outline-none focus:border-[#D7BE97]"
                 />
               </div>
             </div>
 
             {statusData.personalDataConfirmedAt ? (
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300">
+              <div className="p-3 rounded-[12px] bg-[#16634D]/20 border border-[#16634D]/40 text-xs text-[#34C790] font-medium">
                 Údaje byly naposledy potvrzeny dne{' '}
-                <strong>
+                <strong className="text-[#F7F3E9]">
                   {new Date(statusData.personalDataConfirmedAt).toLocaleDateString('cs-CZ')}{' '}
                   {new Date(statusData.personalDataConfirmedAt).toLocaleTimeString('cs-CZ', {
                     hour: '2-digit',
@@ -740,7 +742,7 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
                 .
               </div>
             ) : (
-              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300">
+              <div className="p-3 rounded-[12px] bg-[#835614]/20 border border-[#835614] text-xs text-[#FFF1D7] font-medium">
                 ⚠️ Zatím jste nepotvrdili své platební údaje. Prosím zkontrolujte a uložte.
               </div>
             )}
@@ -748,7 +750,7 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
             <button
               type="submit"
               disabled={isSubmitting || !profileBank.trim()}
-              className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
+              className="w-full py-3.5 rounded-[12px] bg-[#16634D] hover:bg-[#1d775d] disabled:bg-[#43574E] disabled:text-[#ADBDB3] text-white font-heading font-bold text-sm flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
             >
               <Check className="w-4 h-4" />
               {isSubmitting ? 'Ukládám...' : 'Potvrdit a uložit platební profil'}
@@ -769,29 +771,29 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
     const dppWarning = isDpp && ytd >= 250 && ytd < 290;
 
     return (
-      <div className="flex flex-col w-full max-w-lg mx-auto px-2 select-none">
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-2xl">
+      <div className="flex flex-col w-full max-w-[460px] mx-auto px-1 select-none">
+        <div className="bg-[#193F34] border border-[#426456] rounded-[20px] p-4 sm:p-5 shadow-2xl">
           <div className="flex items-center justify-between mb-4">
             <button
               type="button"
               onClick={() => setSubView('main')}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white px-2.5 py-1.5 rounded-lg bg-slate-800 cursor-pointer"
+              className="inline-flex items-center gap-1.5 text-xs font-heading font-semibold text-[#C9DDD0] hover:text-[#193F34] hover:bg-[#D7BE97] px-2.5 py-1.5 rounded-[10px] bg-[#285446] border border-[#426456] cursor-pointer transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
               Zpět
             </button>
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-sky-400" />
+            <h2 className="text-base font-heading font-bold text-[#F7F3E9] flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-[#D7BE97]" />
               Můj měsíční výkaz
             </h2>
-            <span className="text-xs text-slate-400">{statusData.fullName}</span>
+            <span className="text-xs text-[#C9DDD0]">{statusData.fullName}</span>
           </div>
 
           {/* Přepínač měsíce a roku */}
-          <div className="flex items-center justify-between bg-slate-950/80 p-2.5 rounded-xl border border-slate-800 mb-4 gap-2">
-            <div className="text-xs font-semibold text-slate-300">
+          <div className="flex items-center justify-between bg-[#102E26] p-2.5 rounded-[12px] border border-[#426456] mb-4 gap-2">
+            <div className="text-xs font-medium text-[#C9DDD0]">
               Období:{' '}
-              <span className="text-white capitalize">
+              <span className="text-[#F7F3E9] font-heading font-bold capitalize">
                 {new Date(summaryYear, summaryMonth - 1, 1).toLocaleDateString('cs-CZ', {
                   month: 'long',
                   year: 'numeric',
@@ -808,7 +810,7 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
                   setSummaryYear(newYr);
                   loadMonthlySummary(newYr, newMo);
                 }}
-                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs cursor-pointer"
+                className="px-2.5 py-1 rounded-[8px] bg-[#285446] hover:bg-[#D7BE97] hover:text-[#193F34] text-[#F7F3E9] text-xs font-heading font-bold cursor-pointer transition-colors"
               >
                 ◀ Předchozí
               </button>
@@ -821,7 +823,7 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
                   setSummaryYear(newYr);
                   loadMonthlySummary(newYr, newMo);
                 }}
-                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs cursor-pointer"
+                className="px-2.5 py-1 rounded-[8px] bg-[#285446] hover:bg-[#D7BE97] hover:text-[#193F34] text-[#F7F3E9] text-xs font-heading font-bold cursor-pointer transition-colors"
               >
                 Další ▶
               </button>
@@ -831,12 +833,12 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
           {/* Stav limitu DPP, pokud je brigádník na DPP */}
           {isDpp && (
             <div
-              className={`p-3 rounded-xl border mb-4 text-xs flex items-center justify-between ${
+              className={`p-3 rounded-[12px] border mb-4 text-xs flex items-center justify-between ${
                 dppDanger
-                  ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+                  ? 'bg-[#A53F4E]/20 border-[#A53F4E] text-[#FFE0DE]'
                   : dppWarning
-                    ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-                    : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                    ? 'bg-[#835614]/25 border-[#835614] text-[#FFF1D7]'
+                    : 'bg-[#16634D]/25 border-[#16634D] text-[#34C790]'
               }`}
             >
               <div className="flex items-center gap-2">
@@ -845,7 +847,7 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
                   <strong>Roční fond DPP:</strong> {ytd.toFixed(1)} / 300 hodin
                 </span>
               </div>
-              <span className="font-bold">
+              <span className="font-heading font-bold">
                 {dppDanger
                   ? 'Kritický stav'
                   : dppWarning
@@ -856,79 +858,79 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
           )}
 
           {summaryError && (
-            <div className="p-3 mb-4 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs text-center">
+            <div className="p-3 mb-4 rounded-[12px] bg-[#A53F4E]/20 border border-[#A53F4E] text-[#FFE0DE] text-xs text-center font-medium">
               {summaryError}
             </div>
           )}
 
           {loadingSummary ? (
-            <div className="py-12 text-center text-xs text-sky-400">
+            <div className="py-12 text-center text-xs text-[#D7BE97] font-medium">
               Načítám docházku a schválenou výrobu...
             </div>
           ) : summaryData ? (
             <div className="space-y-4">
               {/* Přehledové karty součtů */}
               <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="p-2.5 bg-slate-950/80 border border-slate-800 rounded-xl">
-                  <div className="text-[10px] uppercase font-bold text-slate-400">Čisté hodiny</div>
-                  <div className="text-base font-extrabold text-sky-400 font-mono mt-0.5">
+                <div className="p-2.5 bg-[#102E26] border border-[#426456] rounded-[12px]">
+                  <div className="text-[10px] uppercase font-heading font-bold text-[#C9DDD0]">Čisté hodiny</div>
+                  <div className="text-base font-extrabold text-[#D7BE97] font-mono mt-0.5 tabular-nums">
                     {summaryData.totalNetHours.toFixed(1)} h
                   </div>
                 </div>
-                <div className="p-2.5 bg-slate-950/80 border border-slate-800 rounded-xl">
-                  <div className="text-[10px] uppercase font-bold text-slate-400">Schváleno ks</div>
-                  <div className="text-base font-extrabold text-indigo-400 font-mono mt-0.5">
+                <div className="p-2.5 bg-[#102E26] border border-[#426456] rounded-[12px]">
+                  <div className="text-[10px] uppercase font-heading font-bold text-[#C9DDD0]">Schváleno ks</div>
+                  <div className="text-base font-extrabold text-[#F7F3E9] font-mono mt-0.5 tabular-nums">
                     {summaryData.totalApprovedPieces} ks
                   </div>
                 </div>
-                <div className="p-2.5 bg-emerald-950/30 border border-emerald-500/30 rounded-xl">
-                  <div className="text-[10px] uppercase font-bold text-emerald-300">Výdělek celkem</div>
-                  <div className="text-base font-extrabold text-emerald-400 font-mono mt-0.5">
+                <div className="p-2.5 bg-[#285446] border border-[#D7BE97]/50 rounded-[12px]">
+                  <div className="text-[10px] uppercase font-heading font-bold text-[#D7BE97]">Výdělek celkem</div>
+                  <div className="text-base font-extrabold text-[#34C790] font-mono mt-0.5 tabular-nums">
                     {summaryData.totalEarnedCzk.toLocaleString('cs-CZ')} Kč
                   </div>
                 </div>
               </div>
 
               {/* Tabulka jednotlivých směn */}
-              <div className="max-h-64 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/50">
+              <div className="max-h-64 overflow-y-auto rounded-[12px] border border-[#426456] bg-[#102E26]">
                 {summaryData.shifts.length === 0 ? (
-                  <div className="p-6 text-center text-xs text-slate-500">
+                  <div className="p-6 text-center text-xs text-[#C9DDD0]/70">
                     V tomto měsíci zatím nemáte žádné zaevidované směny.
                   </div>
                 ) : (
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-900/90 text-[10px] uppercase text-slate-400 sticky top-0 border-b border-slate-800">
+                    <thead className="bg-[#193F34] text-[10px] uppercase text-[#C9DDD0] sticky top-0 border-b border-[#426456]">
                       <tr>
-                        <th className="py-2 px-2.5">Datum</th>
-                        <th className="py-2 px-2">Čas v práci</th>
-                        <th className="py-2 px-2 text-center">Čisté h</th>
-                        <th className="py-2 px-2 text-right">Schváleno</th>
-                        <th className="py-2 px-2.5 text-right">Výdělek</th>
+                        <th className="py-2.5 px-2.5">Datum</th>
+                        <th className="py-2.5 px-2">Čas v práci</th>
+                        <th className="py-2.5 px-2 text-center">Čisté h</th>
+                        <th className="py-2.5 px-2 text-right">Schváleno</th>
+                        <th className="py-2.5 px-2.5 text-right">Výdělek</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800/60 font-mono">
+                    <tbody className="divide-y divide-[#426456]/50 font-mono">
                       {summaryData.shifts.map((s, idx) => {
                         const inDate = new Date(s.clockInTime);
                         const outDate = s.clockOutTime ? new Date(s.clockOutTime) : null;
                         return (
-                          <tr key={idx} className="hover:bg-slate-800/40">
-                            <td className="py-2 px-2.5 text-slate-200">
+                          <tr key={idx} className="hover:bg-[#285446]/40 transition-colors">
+                            <td className="py-2 px-2.5 text-[#F7F3E9]">
                               {inDate.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric' })}
                             </td>
-                            <td className="py-2 px-2 text-slate-300 text-[11px]">
+                            <td className="py-2 px-2 text-[#C9DDD0] text-[11px]">
                               {inDate.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}
                               {' – '}
                               {outDate
                                 ? outDate.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })
-                                : <span className="text-rose-400 font-bold">Chybí odchod</span>}
+                                : <span className="text-[#FFE0DE] bg-[#432F32] px-1 py-0.5 rounded font-bold">Chybí odchod</span>}
                             </td>
-                            <td className="py-2 px-2 text-center text-sky-400">
+                            <td className="py-2 px-2 text-center text-[#D7BE97] tabular-nums">
                               {s.isIncomplete ? '—' : `${(s.netHours || 0).toFixed(1)} h`}
                             </td>
-                            <td className="py-2 px-2 text-right text-indigo-300">
+                            <td className="py-2 px-2 text-right text-[#F7F3E9] tabular-nums">
                               {s.approvedPieces || 0} ks
                             </td>
-                            <td className="py-2 px-2.5 text-right font-bold text-emerald-400">
+                            <td className="py-2 px-2.5 text-right font-bold text-[#34C790] tabular-nums">
                               {(s.earnedCzk || 0).toLocaleString('cs-CZ')} Kč
                             </td>
                           </tr>
@@ -949,24 +951,26 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
   // POHLED 1: HLAVNÍ ROZCESTNÍK BRIGÁDNÍKA
   // ====================================================
   return (
-    <div className="flex flex-col items-center justify-center w-full max-w-sm mx-auto px-4 select-none">
-      {/* Karta s informacemi o zaměstnanci */}
-      <div className="w-full bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4 mb-4 shadow-xl text-center">
-        <div className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-sky-500/10 text-sky-400 mb-1.5">
+    <div className="flex flex-col items-center justify-center w-full max-w-[440px] mx-auto px-1 select-none">
+      {/* Karta s informacemi o zaměstnanci (sekce 8.4 A) */}
+      <div className="w-full bg-[#193F34] border border-[#426456] rounded-[16px] p-5 mb-4 shadow-xl text-center">
+        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[#285446] text-[#D7BE97] mb-2 shadow-inner">
           <UserCheck className="w-6 h-6" />
         </div>
-        <h2 className="text-xl font-bold text-white mb-1">{statusData.fullName}</h2>
+        <h2 className="text-xl sm:text-[22px] font-heading font-extrabold text-[#F7F3E9] mb-1.5">
+          {statusData.fullName}
+        </h2>
         <div className="flex items-center justify-center gap-2 flex-wrap mb-2">
-          <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-700 text-slate-300 font-medium">
+          <span className="text-xs px-2.5 py-0.5 rounded-[8px] bg-[#285446] text-[#D7BE97] font-heading font-bold border border-[#426456]">
             {statusData.contractType}
           </span>
           <span
-            className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
+            className={`text-xs px-2.5 py-0.5 rounded-[8px] font-heading font-bold ${
               isOnSite
-                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                ? 'bg-[#16634D]/50 text-[#34C790] border border-[#16634D]'
                 : isOnBreak
-                  ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                  : 'bg-slate-700/80 text-slate-400 border border-slate-600/40'
+                  ? 'bg-[#835614]/40 text-[#FFF1D7] border border-[#835614]'
+                  : 'bg-[#285446]/60 text-[#C9DDD0] border border-[#426456]'
             }`}
           >
             {isOnSite
@@ -976,15 +980,15 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
                 : '○ Mimo pracoviště'}
           </span>
           {(statusData.todaySubmittedPieces ?? 0) > 0 && (
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-semibold">
+            <span className="text-xs px-2.5 py-0.5 rounded-[8px] bg-[#285446] text-[#D7BE97] border border-[#426456] font-mono font-bold">
               Dnes: {statusData.todaySubmittedPieces} ks
             </span>
           )}
         </div>
 
         {lastTimeFormatted && (
-          <div className="flex items-center justify-center gap-1.5 text-xs text-slate-400">
-            <Clock className="w-3.5 h-3.5" />
+          <div className="flex items-center justify-center gap-1.5 text-xs text-[#C9DDD0]">
+            <Clock className="w-3.5 h-3.5 text-[#D7BE97]" />
             <span>
               Poslední záznam (
               {statusData.lastEventType === 'ClockIn'
@@ -994,31 +998,31 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
                   : statusData.lastEventType === 'BreakEnd'
                     ? 'konec přestávky'
                     : 'odchod'}
-              ): <strong className="text-slate-200">{lastTimeFormatted}</strong>
+              ): <strong className="text-[#F7F3E9] font-mono">{lastTimeFormatted}</strong>
             </span>
           </div>
         )}
       </div>
 
-      {/* Notifikace nepodepsaných BOZP dokumentů (Fáze 3) */}
+      {/* Informační karta BOZP (sekce 8.4 B) */}
       {pendingDocsCount > 0 ? (
         <button
           type="button"
           onClick={() => setSubView('documents')}
-          className="w-full mb-4 px-4 py-3 bg-rose-500/20 hover:bg-rose-500/30 border-2 border-rose-500/50 rounded-2xl flex items-center justify-between text-left transition-all cursor-pointer animate-pulse"
+          className="w-full mb-4 px-4 py-3 bg-[#8E4B2F]/20 hover:bg-[#8E4B2F]/30 border-2 border-[#B96543] rounded-[16px] flex items-center justify-between text-left transition-all cursor-pointer shadow-md"
         >
           <div className="flex items-center gap-2.5">
-            <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+            <AlertTriangle className="w-5 h-5 text-[#D7BE97] shrink-0" />
             <div>
-              <div className="text-xs font-bold text-white">
+              <div className="text-xs font-heading font-bold text-[#F7F3E9]">
                 Dokumenty k podpisu ({pendingDocsCount})
               </div>
-              <div className="text-[11px] text-rose-200">
+              <div className="text-[11px] text-[#FFE0DE]">
                 Klikněte pro potvrzení seznámení s BOZP
               </div>
             </div>
           </div>
-          <span className="px-2.5 py-1 rounded-lg bg-rose-600 text-white text-xs font-bold">
+          <span className="px-2.5 py-1 rounded-[8px] bg-[#B96543] text-white text-xs font-heading font-bold">
             Otevřít
           </span>
         </button>
@@ -1027,110 +1031,110 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
           <button
             type="button"
             onClick={() => setSubView('documents')}
-            className="w-full mb-3 px-3 py-2 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 rounded-xl flex items-center justify-between text-xs text-slate-300 transition-colors cursor-pointer"
+            className="w-full mb-3 px-3.5 py-2.5 bg-[#285446] hover:bg-[#285446]/80 border border-[#426456] rounded-[14px] flex items-center justify-between text-xs text-[#F7F3E9] transition-colors cursor-pointer"
           >
-            <span className="flex items-center gap-1.5">
-              <FileCheck2 className="w-4 h-4 text-emerald-400" />
+            <span className="flex items-center gap-2 font-medium">
+              <FileCheck2 className="w-4 h-4 text-[#D7BE97]" />
               Směrnice a BOZP (vše potvrzeno)
             </span>
-            <span className="text-sky-400 font-medium">Zobrazit →</span>
+            <span className="text-[#D7BE97] font-heading font-bold text-xs">Zobrazit →</span>
           </button>
         )
       )}
 
       {/* Offline upozornění */}
       {!isOnline && (
-        <div className="w-full mb-4 p-3.5 bg-amber-500/15 border-2 border-amber-500/50 rounded-2xl flex items-center justify-center gap-2 text-amber-200 text-sm font-semibold shadow-md">
-          <Zap className="w-5 h-5 text-amber-400 shrink-0" />
+        <div className="w-full mb-4 p-3 bg-[#8E4B2F]/20 border border-[#B96543] rounded-[14px] flex items-center justify-center gap-2 text-[#FFE0DE] text-xs font-semibold shadow-sm">
+          <Zap className="w-4 h-4 text-[#D7BE97] shrink-0" />
           <span>Offline režim – Záznam se uloží do telefonu a odešle po obnovení signálu.</span>
         </div>
       )}
 
       {/* Chybová hláška */}
       {errorMessage && (
-        <div className="w-full mb-4 px-4 py-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 text-sm font-medium text-center">
+        <div className="w-full mb-4 px-4 py-2.5 bg-[#A53F4E]/20 border border-[#A53F4E] rounded-[12px] text-[#FFE0DE] text-sm font-semibold text-center">
           {errorMessage}
         </div>
       )}
 
-      {/* Akční tlačítka: Příchod, Odchod, Přestávka, Zapsat výrobu */}
+      {/* Akční tlačítka: Příchod, Odchod, Přestávka, Zapsat výrobu (sekce 8.4 C & D) */}
       <div className="flex flex-col gap-3 w-full mb-4">
-        {/* Tlačítko PŘÍCHOD */}
+        {/* Tlačítko PŘÍCHOD (sekce 8.4 C: #16634D, výška 72 px, radius 16 px) */}
         <button
           type="button"
           disabled={isSubmitting}
           onClick={() => onActionSubmit('ClockIn')}
-          className={`w-full py-4 px-6 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 transition-all cursor-pointer shadow-lg disabled:opacity-50 ${
+          className={`w-full h-[72px] px-6 rounded-[16px] font-heading font-extrabold text-lg flex items-center justify-center gap-3 transition-all cursor-pointer shadow-md active:scale-[0.98] disabled:opacity-50 ${
             isSuggestedIn
-              ? 'bg-emerald-600 hover:bg-emerald-500 text-white animate-suggested-in ring-2 ring-emerald-400/50'
-              : 'bg-slate-800 text-emerald-400 border border-emerald-700/50 hover:bg-emerald-950/40'
+              ? 'bg-[#16634D] hover:bg-[#1d775d] text-white shadow-lg shadow-[#16634D]/30 border-2 border-[#34C790]/50'
+              : 'bg-[#285446] hover:bg-[#285446]/80 text-[#C9DDD0] border border-[#426456]'
           }`}
         >
-          <LogIn className="w-6 h-6" />
+          <LogIn className="w-6 h-6 text-white" />
           <span>PŘÍCHOD</span>
         </button>
 
-        {/* Tlačítko ZAČÁTEK / KONEC PŘESTÁVKY (když je na pracovišti nebo na přestávce) */}
+        {/* Tlačítko ZAČÁTEK / KONEC PŘESTÁVKY (zachováno dle dohody v jantarovém odstínu pauzy #835614) */}
         {(isOnSite || isOnBreak) && (
           <button
             type="button"
             disabled={isSubmitting}
             onClick={() => onActionSubmit(isOnBreak ? 'BreakEnd' : 'BreakStart')}
-            className={`w-full py-3.5 px-6 rounded-2xl font-bold text-base flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-md disabled:opacity-50 ${
+            className={`w-full h-[64px] px-6 rounded-[16px] font-heading font-bold text-base flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-md active:scale-[0.98] disabled:opacity-50 ${
               isOnBreak
-                ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 ring-2 ring-amber-300/60'
-                : 'bg-slate-800 hover:bg-amber-950/40 text-amber-300 border border-amber-600/40'
+                ? 'bg-[#835614] hover:bg-[#996517] text-white border-2 border-[#D7BE97]/60'
+                : 'bg-[#835614]/80 hover:bg-[#835614] text-[#FFF1D7] border border-[#835614]'
             }`}
           >
             {isOnBreak ? (
               <>
-                <Play className="w-5 h-5" />
+                <Play className="w-5 h-5 text-[#D7BE97]" />
                 <span>KONEC PŘESTÁVKY (NÁVRAT)</span>
               </>
             ) : (
               <>
-                <Coffee className="w-5 h-5" />
+                <Coffee className="w-5 h-5 text-[#D7BE97]" />
                 <span>ZAČÁTEK PŘESTÁVKY</span>
               </>
             )}
           </button>
         )}
 
-        {/* Tlačítko ODCHOD */}
+        {/* Tlačítko ODCHOD (sekce 8.4 C: #432F32, text #FFE0DE, výška 72 px, radius 16 px) */}
         <button
           type="button"
           disabled={isSubmitting}
           onClick={() => onActionSubmit('ClockOut')}
-          className={`w-full py-4 px-6 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 transition-all cursor-pointer shadow-lg disabled:opacity-50 ${
+          className={`w-full h-[72px] px-6 rounded-[16px] font-heading font-extrabold text-lg flex items-center justify-center gap-3 transition-all cursor-pointer shadow-md active:scale-[0.98] disabled:opacity-50 ${
             !isSuggestedIn && !isOnBreak
-              ? 'bg-rose-600 hover:bg-rose-500 text-white animate-suggested-out ring-2 ring-rose-400/50'
-              : 'bg-slate-800 text-rose-400 border border-rose-700/50 hover:bg-rose-950/40'
+              ? 'bg-[#432F32] hover:bg-[#52393d] text-[#FFE0DE] border-2 border-[#8E4B2F]/60 shadow-lg'
+              : 'bg-[#432F32]/80 hover:bg-[#432F32] text-[#FFE0DE] border border-[#52393d]'
           }`}
         >
-          <LogOut className="w-6 h-6" />
+          <LogOut className="w-6 h-6 text-[#FFE0DE]" />
           <span>ODCHOD</span>
         </button>
 
-        {/* Tlačítko ZAPSAT VÝROBU (Fáze 2) */}
+        {/* Tlačítko ZAPSAT VÝROBU (sekce 8.4 D: #9B623F měděná, výška 68 px, radius 16 px) */}
         <button
           type="button"
           disabled={isSubmitting}
           onClick={() => setSubView('production')}
-          className="w-full py-4 px-6 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/25 ring-1 ring-indigo-400/40 transition-all cursor-pointer disabled:opacity-50"
+          className="w-full h-[68px] px-6 rounded-[16px] font-heading font-extrabold text-lg flex items-center justify-center gap-3 bg-[#9B623F] hover:bg-[#ad6e47] text-white shadow-lg transition-all cursor-pointer active:scale-[0.98] disabled:opacity-50"
         >
-          <PackagePlus className="w-6 h-6" />
+          <PackagePlus className="w-6 h-6 text-white" />
           <span>ZAPSAT VÝROBU (KUSY)</span>
         </button>
 
-        {/* Tlačítka Fáze 5: Burza směn a Osobní profil */}
+        {/* Tlačítka Burza směn a Profil & Výplata (sekce 8.4 E) */}
         <div className="grid grid-cols-2 gap-2.5 mt-1">
           <button
             type="button"
             disabled={isSubmitting}
             onClick={() => setSubView('shifts')}
-            className="py-3 px-3 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-sky-300 font-semibold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
+            className="py-3.5 px-3 rounded-[14px] bg-[#285446] hover:bg-[#285446]/80 border border-[#426456] text-[#F7F3E9] font-heading font-semibold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
           >
-            <Calendar className="w-4 h-4 text-sky-400 shrink-0" />
+            <Calendar className="w-4 h-4 text-[#D7BE97] shrink-0" />
             <span>Burza směn {(statusData.openShifts?.length || 0) > 0 ? `(${statusData.openShifts?.length})` : ''}</span>
           </button>
 
@@ -1138,50 +1142,46 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
             type="button"
             disabled={isSubmitting}
             onClick={() => setSubView('profile')}
-            className={`py-3 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer transition-colors ${
-              !statusData.personalDataConfirmedAt
-                ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 hover:bg-amber-500/25'
-                : 'bg-slate-800 hover:bg-slate-700/80 border-slate-700 text-slate-300'
-            }`}
+            className="py-3.5 px-3 rounded-[14px] bg-[#D7BE97] hover:bg-[#c9b089] text-[#193F34] font-heading font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-sm"
           >
-            <CreditCard className="w-4 h-4 text-emerald-400 shrink-0" />
+            <CreditCard className="w-4 h-4 text-[#193F34] shrink-0" />
             <span>Profil & Výplata</span>
             {!statusData.personalDataConfirmedAt && (
-              <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+              <span className="w-2 h-2 rounded-full bg-[#8E4B2F] shrink-0" />
             )}
           </button>
         </div>
 
-        {/* Tlačítko Fáze 8 / Zadání 04: Můj měsíční výkaz */}
+        {/* Tlačítko Můj měsíční výkaz (sekce 8.4 F) */}
         <button
           type="button"
           disabled={isSubmitting}
           onClick={handleOpenMonthlySummary}
-          className="w-full mt-2 py-3 px-4 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 text-sky-300 hover:text-sky-200 font-semibold text-xs flex items-center justify-between cursor-pointer transition-all shadow-sm"
+          className="w-full mt-2 py-3.5 px-4 rounded-[14px] bg-[#193F34] hover:bg-[#285446] border border-[#426456] text-[#F7F3E9] font-heading font-semibold text-xs flex items-center justify-between cursor-pointer transition-colors shadow-sm"
         >
           <span className="flex items-center gap-2">
-            <BarChart3 className="w-4 h-4 text-sky-400" />
+            <BarChart3 className="w-4 h-4 text-[#D7BE97]" />
             <span>Můj měsíční výkaz (hodiny a výdělek)</span>
           </span>
-          <span className="text-slate-400 text-xs">Zobrazit →</span>
+          <span className="text-[#D7BE97] font-heading font-bold text-xs">Zobrazit →</span>
         </button>
       </div>
 
-      {/* Moje nejbližší směny (Fáze 3) */}
+      {/* Moje nejbližší směny */}
       {upcomingShifts.length > 0 && (
-        <div className="w-full bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 mb-4 text-left">
-          <div className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-2">
-            <Calendar className="w-3.5 h-3.5 text-sky-400" />
+        <div className="w-full bg-[#193F34] border border-[#426456] rounded-[16px] p-4 mb-4 text-left shadow-sm">
+          <div className="text-xs font-heading font-bold uppercase tracking-wider text-[#C9DDD0] flex items-center gap-1.5 mb-2.5">
+            <Calendar className="w-3.5 h-3.5 text-[#D7BE97]" />
             Moje nejbližší směny
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             {upcomingShifts.map((s) => (
               <div
                 key={s.id}
-                className="flex items-center justify-between text-xs bg-slate-950/80 px-3 py-2 rounded-xl border border-slate-800/80"
+                className="flex items-center justify-between text-xs bg-[#102E26] px-3.5 py-2.5 rounded-[12px] border border-[#426456]"
               >
                 <div>
-                  <span className="font-bold text-white">
+                  <span className="font-heading font-bold text-[#F7F3E9]">
                     {new Date(s.shiftDate).toLocaleDateString('cs-CZ', {
                       weekday: 'short',
                       day: 'numeric',
@@ -1189,10 +1189,10 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
                     })}
                   </span>
                   {s.orderName && (
-                    <span className="ml-2 text-indigo-300 text-[11px]">• {s.orderName}</span>
+                    <span className="ml-2 text-[#C9DDD0] text-[11px]">• {s.orderName}</span>
                   )}
                 </div>
-                <span className="font-mono font-bold text-sky-400">
+                <span className="font-mono font-bold text-[#D7BE97] tabular-nums">
                   {s.startTime} – {s.endTime}
                 </span>
               </div>
@@ -1201,12 +1201,12 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
         </div>
       )}
 
-      {/* Tlačítko Zpět */}
+      {/* Tlačítko Zpět (sekce 8.4 G) */}
       <button
         type="button"
         disabled={isSubmitting}
         onClick={onBack}
-        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors cursor-pointer"
+        className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-heading font-medium text-[#C9DDD0] hover:text-[#F7F3E9] transition-colors cursor-pointer"
       >
         <ArrowLeft className="w-4 h-4" />
         Zpět / Jiný PIN

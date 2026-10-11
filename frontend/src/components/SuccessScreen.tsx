@@ -45,40 +45,53 @@ export const SuccessScreen: React.FC<SuccessScreenProps> = ({ response, onFinish
     : `${actionText} zaznamenán v ${time}`;
 
   return (
-    <div
-      className={`fixed inset-0 z-50 bg-gradient-to-b ${
-        isProduction ? 'from-indigo-600 to-indigo-800' : 'from-emerald-600 to-emerald-700'
-      } flex flex-col items-center justify-center p-6 text-white select-none transition-all duration-300`}
-    >
-      <div className="w-28 h-28 rounded-full bg-white/20 backdrop-blur-sm border-4 border-white/40 flex items-center justify-center mb-6 shadow-2xl animate-bounce">
-        {isProduction ? (
-          <PackageCheck className="w-16 h-16 text-white stroke-[2.5]" />
-        ) : (
-          <Check className="w-16 h-16 text-white stroke-[3]" />
+    <div className="fixed inset-0 z-50 bg-[#102E26]/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-[#F7F3E9] select-none transition-all duration-300">
+      <div className="w-full max-w-sm bg-[#193F34] border border-[#426456] rounded-[20px] p-6 text-center shadow-2xl flex flex-col items-center">
+        {/* Ikona v kruhu */}
+        <div
+          className={`w-24 h-24 rounded-full flex items-center justify-center mb-5 border-2 shadow-lg ${
+            isProduction
+              ? 'bg-[#9B623F]/20 border-[#9B623F] text-[#D7BE97]'
+              : 'bg-[#16634D]/30 border-[#16634D] text-[#34C790]'
+          }`}
+        >
+          {isProduction ? (
+            <PackageCheck className="w-12 h-12 stroke-[2.2]" />
+          ) : (
+            <Check className="w-12 h-12 stroke-[2.5]" />
+          )}
+        </div>
+
+        <h2 className="text-2xl font-heading font-extrabold text-[#F7F3E9] mb-1">
+          {response.employeeName}
+        </h2>
+
+        <p
+          className={`text-base font-heading font-semibold mb-3 ${
+            isProduction ? 'text-[#D7BE97]' : 'text-[#34C790]'
+          }`}
+        >
+          {displayMessage}
+        </p>
+
+        {response.message && !isProduction && (
+          <p className="text-xs text-[#C9DDD0] max-w-xs mb-4">
+            {response.message}
+          </p>
         )}
+
+        {/* Odpočet a tlačítko OK */}
+        <div className="mt-4 pt-4 border-t border-[#426456]/60 w-full flex items-center justify-between text-xs text-[#C9DDD0]">
+          <span>Návrat za {secondsLeft} s</span>
+          <button
+            type="button"
+            onClick={onFinished}
+            className="px-4 py-1.5 rounded-[10px] bg-[#285446] hover:bg-[#D7BE97] hover:text-[#193F34] text-[#F7F3E9] font-heading font-bold text-xs transition-colors cursor-pointer"
+          >
+            Hotovo (OK)
+          </button>
+        </div>
       </div>
-
-      <h1 className="text-3xl md:text-4xl font-extrabold text-center mb-2 tracking-tight">
-        {response.employeeName}
-      </h1>
-
-      <p className="text-xl md:text-2xl font-semibold text-white/90 text-center mb-6 max-w-md">
-        {displayMessage}
-      </p>
-
-      <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/15 backdrop-blur-sm text-sm text-white/90 font-medium">
-        <span>
-          Návrat na klávesnici za <strong>{secondsLeft}s</strong>...
-        </span>
-      </div>
-
-      <button
-        type="button"
-        onClick={onFinished}
-        className="mt-8 px-6 py-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-sm font-semibold transition-all cursor-pointer"
-      >
-        Pokračovat hned
-      </button>
     </div>
   );
 };

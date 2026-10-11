@@ -1,67 +1,77 @@
 @import "tailwindcss";
 
-@layer base {
-  :root {
-    color-scheme: dark;
-  }
-  body {
-    touch-action: manipulation;
-    -webkit-tap-highlight-color: transparent;
-  }
+:root {
+  /* Greenberg Design Tokens */
+  --color-brand-primary: #193F34;
+  --color-brand-dark: #102E26;
+  --color-brand-secondary: #285446;
+  --color-brand-paper: #F7F3E9;
+  --color-brand-kraft: #D7BE97;
+  --color-brand-copper: #B96543;
+  --color-brand-copper-text: #8E4B2F;
+  --color-text-primary: #232B28;
+  --color-text-secondary: #55645B;
+  --color-text-inverse: #F7F3E9;
+  --color-surface-light: #FFFFFF;
+  --color-surface-dark: #193F34;
+  --color-border-light: #E4DDD0;
+  --color-border-dark: #426456;
+  --color-action-arrival: #16634D;
+  --color-action-departure: #432F32;
+  --color-action-production: #9B623F;
+  --color-status-error: #A53F4E;
+  --color-status-warning: #835614;
+
+  --radius-card: 16px;
+  --radius-button: 12px;
+  --radius-input: 10px;
 }
 
-/* Zajištění viditelnosti ikonek kalendáře a hodin u formulářových prvků v tmavém režimu */
-input[type="date"],
-input[type="time"],
-input[type="datetime-local"] {
+body {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+h1, h2, h3, h4, .font-heading {
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.shadow-admin-card {
+  box-shadow: 0 6px 24px rgba(16, 40, 32, 0.08);
+}
+
+/* Kalendář a čas picker pro tmavý i světlý režim */
+.theme-dark input[type="date"],
+.theme-dark input[type="time"],
+.theme-dark input[type="datetime-local"] {
   color-scheme: dark;
+}
+
+.theme-light input[type="date"],
+.theme-light input[type="time"],
+.theme-light input[type="datetime-local"] {
+  color-scheme: light;
 }
 
 input[type="date"]::-webkit-calendar-picker-indicator,
 input[type="time"]::-webkit-calendar-picker-indicator,
 input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   cursor: pointer;
-  filter: invert(0.9) brightness(1.2);
-  opacity: 0.9;
   padding: 4px;
   border-radius: 4px;
   transition: all 0.2s ease;
 }
 
-input[type="date"]::-webkit-calendar-picker-indicator:hover,
-input[type="time"]::-webkit-calendar-picker-indicator:hover,
-input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
-  filter: invert(1) brightness(1.5);
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-/* Jemné pulzující animace pro akční tlačítka */
-@keyframes soft-pulse {
-  0%, 100% {
-    transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+/* Redukce animací dle preferencí uživatele */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
-  50% {
-    transform: scale(1.02);
-    box-shadow: 0 0 20px 4px rgba(34, 197, 94, 0.25);
-  }
-}
-
-.animate-suggested-in {
-  animation: soft-pulse 2s infinite ease-in-out;
-}
-
-@keyframes soft-pulse-out {
-  0%, 100% {
-    transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
-  }
-  50% {
-    transform: scale(1.02);
-    box-shadow: 0 0 20px 4px rgba(239, 68, 68, 0.25);
-  }
-}
-
-.animate-suggested-out {
-  animation: soft-pulse-out 2s infinite ease-in-out;
 }

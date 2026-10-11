@@ -50,8 +50,14 @@ export const App: React.FC = () => {
     setView('kiosk');
   };
 
+  const isDark = view === 'kiosk';
+
   return (
-    <div className="min-h-screen bg-slate-950 font-sans selection:bg-sky-500 selection:text-white">
+    <div
+      className={`min-h-screen font-sans selection:bg-[#D7BE97] selection:text-[#193F34] ${
+        isDark ? 'bg-[#102E26] text-[#F7F3E9] theme-dark' : 'bg-[#F7F3E9] text-[#232B28] theme-light'
+      }`}
+    >
       {view === 'document' && viewerDocId && (
         <DocumentViewerPage
           documentId={viewerDocId}
@@ -70,7 +76,7 @@ export const App: React.FC = () => {
           <button
             type="button"
             onClick={handleOpenAdmin}
-            className="fixed bottom-3 right-3 p-2.5 rounded-full bg-slate-900/60 hover:bg-slate-800 text-slate-500 hover:text-slate-200 border border-slate-800/80 transition-all cursor-pointer shadow-sm"
+            className="fixed bottom-3 right-3 p-2.5 rounded-full bg-[#193F34]/80 hover:bg-[#285446] text-[#C9DDD0] hover:text-[#D7BE97] border border-[#426456]/60 transition-all cursor-pointer shadow-sm z-40"
             title="Administrace"
           >
             <Lock className="w-4 h-4" />
