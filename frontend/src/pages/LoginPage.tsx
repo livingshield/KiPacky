@@ -40,10 +40,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToKi
           Zpět na terminál docházky
         </button>
 
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-[14px] bg-[#193F34] text-[#D7BE97] mb-3 shadow-md">
-            <Shield className="w-7 h-7" />
-          </div>
+        <div className="text-center mb-8 flex flex-col items-center">
+          <img
+            src="greenberg_logo.png"
+            alt="Greenberg"
+            className="h-14 w-auto object-contain max-w-[200px] mb-4"
+          />
           <h2 className="text-2xl font-heading font-extrabold text-[#193F34] tracking-tight">
             Kípačky – Správa
           </h2>

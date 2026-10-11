@@ -54,9 +54,18 @@ export const PinPad: React.FC<PinPadProps> = ({
 
   return (
     <div className="flex flex-col items-center justify-center w-full max-w-[420px] mx-auto px-4 select-none">
-      {/* 2. Centrální ikona zámku ve čtverci 64 x 64 px */}
-      <div className="w-16 h-16 rounded-[16px] bg-[#285446] border border-[#426456] flex items-center justify-center mb-3 shadow-md">
-        <Lock className="w-8 h-8 text-[#D7BE97]" />
+      {/* Greenberg Logo na průhledném pozadí */}
+      <div className="mb-4 flex flex-col items-center">
+        <img
+          src="greenberg_logo.png"
+          alt="Greenberg"
+          className="h-16 w-auto object-contain max-w-[220px] drop-shadow-sm"
+        />
+      </div>
+
+      {/* 2. Zmenšený centrální indikátor zámku */}
+      <div className="w-12 h-12 rounded-[14px] bg-[#285446] border border-[#426456] flex items-center justify-center mb-3 shadow-md">
+        <Lock className="w-6 h-6 text-[#D7BE97]" />
       </div>
 
       {/* 3. Nadpis Manrope Bold */}
