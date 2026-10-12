@@ -66,6 +66,7 @@ public class KipackyDbContext : DbContext
             entity.Property(e => e.Name).HasMaxLength(150).IsRequired();
             entity.Property(e => e.IsActive).HasDefaultValue(true);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
+            entity.Property(e => e.TargetPricePerPiece).HasPrecision(18, 2);
         });
 
         // Výrobní operace a normy
@@ -77,6 +78,11 @@ public class KipackyDbContext : DbContext
             entity.Property(e => e.NormPerHour).IsRequired();
             entity.Property(e => e.RatePerPiece).HasPrecision(10, 2).IsRequired();
             entity.Property(e => e.IsActive).HasDefaultValue(true);
+
+            entity.HasOne(e => e.Order)
+                  .WithMany()
+                  .HasForeignKey(e => e.OrderId)
+                  .OnDelete(DeleteBehavior.SetNull);
 
             // Seed výchozích 4 výrobních operací
             entity.HasData(
@@ -217,9 +223,24 @@ BEGIN
         [IsActive] BIT NOT NULL DEFAULT 1,
         [CreatedAt] DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
         [TargetPieces] INT NULL,
+        [TotalPiecesTarget] INT NULL,
+        [StartDate] DATE NULL,
+        [EndDate] DATE NULL,
         [Deadline] DATETIME2 NULL,
+        [TargetPricePerPiece] DECIMAL(18,2) NULL,
         [Description] NVARCHAR(500) NULL
     );
+END
+ELSE
+BEGIN
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Orders]') AND name = 'TotalPiecesTarget')
+        ALTER TABLE [Kipacky].[kipa_Orders] ADD [TotalPiecesTarget] INT NULL;
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Orders]') AND name = 'StartDate')
+        ALTER TABLE [Kipacky].[kipa_Orders] ADD [StartDate] DATE NULL;
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Orders]') AND name = 'EndDate')
+        ALTER TABLE [Kipacky].[kipa_Orders] ADD [EndDate] DATE NULL;
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Orders]') AND name = 'TargetPricePerPiece')
+        ALTER TABLE [Kipacky].[kipa_Orders] ADD [TargetPricePerPiece] DECIMAL(18,2) NULL;
 END
 
 -- 4. Výrobní operace a normy
@@ -230,9 +251,23 @@ BEGIN
         [Name] NVARCHAR(150) NOT NULL,
         [NormPerHour] INT NOT NULL DEFAULT 100,
         [RatePerPiece] DECIMAL(10,2) NOT NULL DEFAULT 1.35,
-        [IsActive] BIT NOT NULL DEFAULT 1
+        [IsActive] BIT NOT NULL DEFAULT 1,
+        [OrderId] INT NULL
     );
 END
+ELSE
+BEGIN
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Operations]') AND name = 'OrderId')
+        ALTER TABLE [Kipacky].[kipa_Operations] ADD [OrderId] INT NULL;
+END
+
+-- Employees extra columns
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Employees]') AND name = 'ContractStartDate')
+    ALTER TABLE [Kipacky].[kipa_Employees] ADD [ContractStartDate] DATE NULL;
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Employees]') AND name = 'ContractEndDate')
+    ALTER TABLE [Kipacky].[kipa_Employees] ADD [ContractEndDate] DATE NULL;
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Employees]') AND name = 'SelfScheduled')
+    ALTER TABLE [Kipacky].[kipa_Employees] ADD [SelfScheduled] BIT NOT NULL DEFAULT 0;
 
 -- 5. Výroba
 IF NOT EXISTS (SELECT * FROM sys.tables t JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE s.name = 'Kipacky' AND t.name = 'kipa_ProductionLogs')

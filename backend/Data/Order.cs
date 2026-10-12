@@ -9,6 +9,10 @@ public class Order
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public int? TargetPieces { get; set; }
+    public int? TotalPiecesTarget { get; set; }
+    public DateTime? StartDate { get; set; }
+    public DateTime? EndDate { get; set; }
     public DateTime? Deadline { get; set; }
+    public decimal? TargetPricePerPiece { get; set; }
     public string? Description { get; set; }
 }

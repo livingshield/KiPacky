@@ -152,8 +152,16 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
   // Nová zakázka / operace
   const [newOrderName, setNewOrderName] = useState('');
   const [newOrderTarget, setNewOrderTarget] = useState('');
-  const [newOrderDeadline, setNewOrderDeadline] = useState('');
+  const [newOrderStartDate, setNewOrderStartDate] = useState('');
+  const [newOrderEndDate, setNewOrderEndDate] = useState('');
+  const [newOrderTargetPrice, setNewOrderTargetPrice] = useState('');
   const [newOrderDesc, setNewOrderDesc] = useState('');
+  const [newOrderInitialOps, setNewOrderInitialOps] = useState<
+    Array<{ name: string; normPerHour: number; ratePerPiece: number }>
+  >([]);
+  const [initOpName, setInitOpName] = useState('');
+  const [initOpNorm, setInitOpNorm] = useState('100');
+  const [initOpRate, setInitOpRate] = useState('1.35');
   const [editingOrder, setEditingOrder] = useState<OrderItem | null>(null);
 
   const [newOpName, setNewOpName] = useState('');
@@ -161,6 +169,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
   const [newOpNorm, setNewOpNorm] = useState('100');
   const [newOpRate, setNewOpRate] = useState('1.35');
   const [editingOp, setEditingOp] = useState<OperationItem | null>(null);
+  const [filterOpOrderId, setFilterOpOrderId] = useState<string>('');
 
   // ==========================================
   // STAV: FÁZE 3 – SMĚNY A BOZP DOKUMENTY
@@ -634,22 +643,53 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
     }
   };
 
+  const handleAddInitOp = () => {
+    if (!initOpName.trim()) return;
+    setNewOrderInitialOps((prev) => [
+      ...prev,
+      {
+        name: initOpName.trim(),
+        normPerHour: parseInt(initOpNorm, 10) || 100,
+        ratePerPiece: parseFloat(initOpRate.replace(',', '.')) || 1.35,
+      },
+    ]);
+    setInitOpName('');
+    setInitOpNorm('100');
+    setInitOpRate('1.35');
+  };
+
+  const handleRemoveInitOp = (index: number) => {
+    setNewOrderInitialOps((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newOrderName.trim()) return;
     try {
+      const targetPiecesNum = newOrderTarget ? parseInt(newOrderTarget, 10) : 0;
+      const targetPriceNum = newOrderTargetPrice ? parseFloat(newOrderTargetPrice.replace(',', '.')) : 0;
+
       await saveOrder({
         name: newOrderName.trim(),
         isActive: true,
-        targetPieces: newOrderTarget ? parseInt(newOrderTarget, 10) : 0,
-        deadline: newOrderDeadline || undefined,
+        targetPieces: targetPiecesNum,
+        totalPiecesTarget: targetPiecesNum,
+        startDate: newOrderStartDate || undefined,
+        endDate: newOrderEndDate || undefined,
+        deadline: newOrderEndDate || undefined,
+        targetPricePerPiece: targetPriceNum,
         description: newOrderDesc.trim() || undefined,
+        operations: newOrderInitialOps.length > 0 ? newOrderInitialOps : undefined,
       });
+
       setNewOrderName('');
       setNewOrderTarget('');
-      setNewOrderDeadline('');
+      setNewOrderStartDate('');
+      setNewOrderEndDate('');
+      setNewOrderTargetPrice('');
       setNewOrderDesc('');
-      showAlert('success', 'Zakázka byla přidána.');
+      setNewOrderInitialOps([]);
+      showAlert('success', 'Zakázka byla úspěšně přidána.');
       loadProductionData();
     } catch (err: any) {
       showAlert('error', err.message);
@@ -662,8 +702,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
         id: ord.id,
         name: ord.name,
         isActive: ord.isActive,
-        targetPieces: ord.targetPieces || 0,
-        deadline: ord.deadline || undefined,
+        targetPieces: ord.totalPiecesTarget ?? ord.targetPieces ?? 0,
+        totalPiecesTarget: ord.totalPiecesTarget ?? ord.targetPieces ?? 0,
+        startDate: ord.startDate || undefined,
+        endDate: ord.endDate || ord.deadline || undefined,
+        deadline: ord.endDate || ord.deadline || undefined,
+        targetPricePerPiece: ord.targetPricePerPiece ?? 0,
         description: ord.description || undefined,
       });
       setEditingOrder(null);
@@ -2003,102 +2047,251 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                   Zakázky (Orders)
                 </h3>
 
-                <form onSubmit={handleCreateOrder} className="space-y-2 mb-4 bg-[#F7F3E9]/60 p-3.5 rounded-xl border border-[#E4DDD0]">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <input
-                      type="text"
-                      required
-                      placeholder="Název zakázky (např. Zakázka GAMA)"
-                      value={newOrderName}
-                      onChange={(e) => setNewOrderName(e.target.value)}
-                      className="px-3 py-2 bg-white border border-[#E4DDD0] rounded-xl text-xs text-white placeholder-[#8B9B90]"
-                    />
-                    <input
-                      type="number"
-                      min={0}
-                      placeholder="Cílový počet kusů (např. 5000)"
-                      value={newOrderTarget}
-                      onChange={(e) => setNewOrderTarget(e.target.value)}
-                      className="px-3 py-2 bg-white border border-[#E4DDD0] rounded-xl text-xs text-white placeholder-[#8B9B90] font-mono"
-                    />
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <form onSubmit={handleCreateOrder} className="space-y-3 mb-4 bg-[#F7F3E9]/60 p-4 rounded-xl border border-[#E4DDD0]">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div>
-                      <label className="block text-[11px] text-[#4E6157] mb-1">Termín dokončení (deadline)</label>
-                      <input
-                        type="date"
-                        value={newOrderDeadline}
-                        onChange={(e) => setNewOrderDeadline(e.target.value)}
-                        className="w-full px-3 py-1.5 bg-white border border-[#E4DDD0] rounded-xl text-xs text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] text-[#4E6157] mb-1">Popis / poznámka</label>
+                      <label className="block text-[11px] font-semibold text-[#193F34] mb-1">Název zakázky *</label>
                       <input
                         type="text"
-                        placeholder="Popis zakázky (volitelné)"
-                        value={newOrderDesc}
-                        onChange={(e) => setNewOrderDesc(e.target.value)}
-                        className="w-full px-3 py-1.5 bg-white border border-[#E4DDD0] rounded-xl text-xs text-white placeholder-[#8B9B90]"
+                        required
+                        placeholder="Např. Dárková krabička Premium"
+                        value={newOrderName}
+                        onChange={(e) => setNewOrderName(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-[#232B28] placeholder-[#8B9B90] font-medium"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-[#193F34] mb-1">Cílový počet kusů (TotalPiecesTarget)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        placeholder="Např. 2000 ks"
+                        value={newOrderTarget}
+                        onChange={(e) => setNewOrderTarget(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-[#232B28] placeholder-[#8B9B90] font-mono font-medium"
                       />
                     </div>
                   </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-[#193F34] mb-1">Datum zahájení (StartDate)</label>
+                      <input
+                        type="date"
+                        value={newOrderStartDate}
+                        onChange={(e) => setNewOrderStartDate(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-white border border-[#D6DCD3] rounded-xl text-xs text-[#232B28]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-[#193F34] mb-1">Termín dokončení (EndDate)</label>
+                      <input
+                        type="date"
+                        value={newOrderEndDate}
+                        onChange={(e) => setNewOrderEndDate(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-white border border-[#D6DCD3] rounded-xl text-xs text-[#232B28]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-[#193F34] mb-1">Cílová cena / ks (Kč)</label>
+                      <input
+                        type="text"
+                        placeholder="Např. 15.50"
+                        value={newOrderTargetPrice}
+                        onChange={(e) => setNewOrderTargetPrice(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-white border border-[#D6DCD3] rounded-xl text-xs text-[#232B28] placeholder-[#8B9B90] font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-[#193F34] mb-1">Popis / poznámka k zakázce</label>
+                    <input
+                      type="text"
+                      placeholder="Poznámka k balení, specifikaci nebo materiálu"
+                      value={newOrderDesc}
+                      onChange={(e) => setNewOrderDesc(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-white border border-[#D6DCD3] rounded-xl text-xs text-[#232B28] placeholder-[#8B9B90]"
+                    />
+                  </div>
+
+                  {/* Specifické výrobní operace pro tuto zakázku (Fáze 2.1) */}
+                  <div className="p-3 bg-[#EFE9DC]/70 rounded-xl border border-[#D6DCD3] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-heading font-bold text-[#193F34] flex items-center gap-1.5">
+                        <Settings2 className="w-3.5 h-3.5 text-[#193F34]" />
+                        Specifické operace pro tuto zakázku (normy a sazby)
+                      </span>
+                      <span className="text-[10px] text-[#4E6157]">
+                        {newOrderInitialOps.length} přidáno
+                      </span>
+                    </div>
+
+                    {newOrderInitialOps.length > 0 && (
+                      <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                        {newOrderInitialOps.map((op, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-lg border border-[#D6DCD3] text-xs"
+                          >
+                            <span className="font-semibold text-[#193F34]">{op.name}</span>
+                            <div className="flex items-center gap-2 text-[11px] font-mono">
+                              <span className="text-[#4E6157]">{op.normPerHour} ks/h</span>
+                              <span className="text-emerald-700 font-bold">{op.ratePerPiece.toFixed(2)} Kč/ks</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveInitOp(idx)}
+                                className="text-rose-600 hover:text-rose-800 font-bold px-1 text-sm cursor-pointer"
+                                title="Odebrat operaci"
+                              >
+                                &times;
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-1.5 pt-1">
+                      <input
+                        type="text"
+                        placeholder="Název operace (např. Díl A, Kompletace)"
+                        value={initOpName}
+                        onChange={(e) => setInitOpName(e.target.value)}
+                        className="sm:col-span-2 px-2.5 py-1 bg-white border border-[#D6DCD3] rounded-lg text-xs text-[#232B28] placeholder-[#8B9B90]"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Norma ks/h"
+                        value={initOpNorm}
+                        onChange={(e) => setInitOpNorm(e.target.value)}
+                        className="px-2 py-1 bg-white border border-[#D6DCD3] rounded-lg text-xs text-[#232B28] font-mono"
+                        title="Norma kusů za hodinu"
+                      />
+                      <div className="flex gap-1">
+                        <input
+                          type="text"
+                          placeholder="Kč/ks"
+                          value={initOpRate}
+                          onChange={(e) => setInitOpRate(e.target.value)}
+                          className="w-full px-2 py-1 bg-white border border-[#D6DCD3] rounded-lg text-xs text-[#232B28] font-mono"
+                          title="Sazba za kus v Kč"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddInitOp}
+                          className="px-2 py-1 bg-[#285446] hover:bg-[#193F34] text-white rounded-lg text-xs font-bold cursor-pointer whitespace-nowrap"
+                          title="Přidat tuto operaci do zakázky"
+                        >
+                          + Přidat
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
                   <button
                     type="submit"
-                    className="w-full py-2 bg-[#193F34] hover:bg-[#285446] text-[#F7F3E9] rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+                    className="w-full py-2.5 bg-[#193F34] hover:bg-[#285446] text-[#F7F3E9] rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all"
                   >
                     <Plus className="w-4 h-4" />
-                    Přidat zakázku s cílem
+                    Vytvořit zakázku se specifickými operacemi
                   </button>
                 </form>
 
-                <div className="divide-y divide-slate-800 max-h-80 overflow-y-auto pr-1">
+                <div className="divide-y divide-[#E4DDD0] max-h-96 overflow-y-auto pr-1">
                   {orders.map((ord) => {
                     const isEditing = editingOrder?.id === ord.id;
+                    const target = ord.totalPiecesTarget ?? ord.targetPieces ?? 0;
                     const percent = Math.min(100, ord.percentDone || 0);
+                    const orderOps = operations.filter((op) => op.orderId === ord.id);
 
                     return (
                       <div key={ord.id} className="py-3 text-xs space-y-1.5">
                         {isEditing ? (
-                          <div className="space-y-2 bg-[#F7F3E9] p-2.5 rounded-xl border border-[#193F34]/40">
-                            <input
-                              type="text"
-                              value={editingOrder.name}
-                              onChange={(e) => setEditingOrder({ ...editingOrder, name: e.target.value })}
-                              className="w-full px-2 py-1 bg-white border border-[#D6DCD3] rounded-lg text-white font-medium text-xs"
-                            />
-                            <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-2 bg-[#F7F3E9] p-3 rounded-xl border border-[#193F34]/40">
+                            <div>
+                              <label className="text-[10px] font-bold text-[#193F34]">Název zakázky:</label>
+                              <input
+                                type="text"
+                                value={editingOrder.name}
+                                onChange={(e) => setEditingOrder({ ...editingOrder, name: e.target.value })}
+                                className="w-full px-2.5 py-1.5 bg-white border border-[#D6DCD3] rounded-lg text-[#232B28] font-bold text-xs"
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                               <div>
                                 <label className="text-[10px] text-[#4E6157]">Cílové kusy:</label>
                                 <input
                                   type="number"
-                                  value={editingOrder.targetPieces || 0}
-                                  onChange={(e) => setEditingOrder({ ...editingOrder, targetPieces: parseInt(e.target.value || '0', 10) })}
-                                  className="w-full px-2 py-1 bg-white border border-[#D6DCD3] rounded-lg text-white font-mono text-xs"
+                                  value={editingOrder.totalPiecesTarget ?? editingOrder.targetPieces ?? 0}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value || '0', 10);
+                                    setEditingOrder({ ...editingOrder, totalPiecesTarget: val, targetPieces: val });
+                                  }}
+                                  className="w-full px-2 py-1 bg-white border border-[#D6DCD3] rounded-lg text-[#232B28] font-mono text-xs"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-[#4E6157]">Zahájení:</label>
+                                <input
+                                  type="date"
+                                  value={editingOrder.startDate || ''}
+                                  onChange={(e) => setEditingOrder({ ...editingOrder, startDate: e.target.value })}
+                                  className="w-full px-2 py-1 bg-white border border-[#D6DCD3] rounded-lg text-[#232B28] text-xs"
                                 />
                               </div>
                               <div>
                                 <label className="text-[10px] text-[#4E6157]">Termín:</label>
                                 <input
                                   type="date"
-                                  value={editingOrder.deadline || ''}
-                                  onChange={(e) => setEditingOrder({ ...editingOrder, deadline: e.target.value })}
-                                  className="w-full px-2 py-1 bg-white border border-[#D6DCD3] rounded-lg text-white text-xs"
+                                  value={editingOrder.endDate || editingOrder.deadline || ''}
+                                  onChange={(e) =>
+                                    setEditingOrder({
+                                      ...editingOrder,
+                                      endDate: e.target.value,
+                                      deadline: e.target.value,
+                                    })
+                                  }
+                                  className="w-full px-2 py-1 bg-white border border-[#D6DCD3] rounded-lg text-[#232B28] text-xs"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-[#4E6157]">Cílová cena (Kč/ks):</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={editingOrder.targetPricePerPiece ?? 0}
+                                  onChange={(e) =>
+                                    setEditingOrder({
+                                      ...editingOrder,
+                                      targetPricePerPiece: parseFloat(e.target.value || '0'),
+                                    })
+                                  }
+                                  className="w-full px-2 py-1 bg-white border border-[#D6DCD3] rounded-lg text-[#232B28] font-mono text-xs"
                                 />
                               </div>
                             </div>
-                            <div className="flex gap-2">
+                            <div>
+                              <label className="text-[10px] text-[#4E6157]">Popis zakázky:</label>
+                              <input
+                                type="text"
+                                value={editingOrder.description || ''}
+                                onChange={(e) => setEditingOrder({ ...editingOrder, description: e.target.value })}
+                                className="w-full px-2 py-1 bg-white border border-[#D6DCD3] rounded-lg text-[#232B28] text-xs"
+                              />
+                            </div>
+                            <div className="flex gap-2 pt-1">
                               <button
                                 type="button"
                                 onClick={() => handleSaveEditOrder(editingOrder)}
-                                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-xs cursor-pointer"
+                                className="px-3.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-xs cursor-pointer shadow-sm"
                               >
-                                Uložit
+                                Uložit změny
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setEditingOrder(null)}
-                                className="px-3 py-1 bg-[#E9E1D2] hover:bg-[#DDD5C5] text-[#193F34] rounded-lg text-xs cursor-pointer"
+                                className="px-3.5 py-1 bg-[#E9E1D2] hover:bg-[#DDD5C5] text-[#193F34] rounded-lg text-xs font-semibold cursor-pointer"
                               >
                                 Zrušit
                               </button>
@@ -2108,15 +2301,24 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                           <>
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <span className={ord.isActive ? 'text-white font-bold text-sm' : 'text-[#6C7E74] line-through font-medium text-sm'}>
+                                <span className={ord.isActive ? 'text-[#193F34] font-bold text-sm' : 'text-[#6C7E74] line-through font-medium text-sm'}>
                                   {ord.name}
                                 </span>
-                                {ord.targetPieces && ord.targetPieces > 0 ? (
-                                  <span className="text-[11px] text-[#193F34] font-mono font-bold bg-sky-950/60 px-2 py-0.5 rounded-md border border-sky-800/40">
-                                    {ord.completedPieces || 0} / {ord.targetPieces} ks ({percent}%)
+                                {target > 0 ? (
+                                  <span className="text-[11px] text-[#193F34] font-mono font-bold bg-[#193F34]/10 px-2 py-0.5 rounded-md border border-[#193F34]/20">
+                                    {ord.completedPieces || 0} / {target} ks ({percent}%)
                                   </span>
                                 ) : (
                                   <span className="text-[11px] text-[#6C7E74]">Bez cíle</span>
+                                )}
+                                {orderOps.length > 0 ? (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold" title="Počet přiřazených operací">
+                                    {orderOps.length} op.
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 font-semibold" title="Zatím nemá specifické operace">
+                                    0 op.
+                                  </span>
                                 )}
                               </div>
                               <div className="flex items-center gap-1.5">
@@ -2132,7 +2334,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                                 <button
                                   type="button"
                                   onClick={() => setEditingOrder(ord)}
-                                  className="p-1 text-[#4E6157] hover:text-white rounded-lg hover:bg-[#E9E1D2] cursor-pointer"
+                                  className="p-1 text-[#4E6157] hover:text-[#193F34] rounded-lg hover:bg-[#E9E1D2] cursor-pointer"
                                   title="Upravit zakázku"
                                 >
                                   <Edit2 className="w-3.5 h-3.5" />
@@ -2142,8 +2344,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                                   onClick={() => handleToggleOrder(ord)}
                                   className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold cursor-pointer ${
                                     ord.isActive
-                                      ? 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25'
-                                      : 'bg-[#E9E1D2] text-[#193F34] text-[#4E6157] hover:bg-slate-700'
+                                      ? 'bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25'
+                                      : 'bg-[#E9E1D2] text-[#4E6157] hover:bg-slate-300'
                                   }`}
                                 >
                                   {ord.isActive ? 'Aktivní' : 'Skrytá'}
@@ -2151,27 +2353,35 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                               </div>
                             </div>
 
-                            {ord.targetPieces && ord.targetPieces > 0 ? (
-                              <div className="w-full bg-[#E9E1D2] text-[#193F34] rounded-full h-1.5 overflow-hidden">
+                            {target > 0 ? (
+                              <div className="w-full bg-[#E9E1D2] rounded-full h-1.5 overflow-hidden">
                                 <div
                                   className={`h-1.5 rounded-full transition-all duration-500 ${
-                                    percent >= 100 ? 'bg-emerald-500' : 'bg-sky-500'
+                                    percent >= 100 ? 'bg-emerald-600' : 'bg-[#193F34]'
                                   }`}
                                   style={{ width: `${percent}%` }}
                                 />
                               </div>
                             ) : null}
 
-                            {(ord.deadline || ord.description) && (
-                              <div className="flex items-center justify-between text-[11px] text-[#4E6157]">
-                                <span>{ord.description || ''}</span>
-                                {ord.deadline && (
-                                  <span className="text-amber-300 font-mono">
-                                    Termín: {new Date(ord.deadline).toLocaleDateString('cs-CZ')}
+                            <div className="flex flex-wrap items-center justify-between text-[11px] text-[#4E6157] gap-2">
+                              <span>{ord.description || ''}</span>
+                              <div className="flex items-center gap-2 font-mono">
+                                {ord.startDate && (
+                                  <span>Od: {new Date(ord.startDate).toLocaleDateString('cs-CZ')}</span>
+                                )}
+                                {(ord.endDate || ord.deadline) && (
+                                  <span className="text-amber-800 font-semibold">
+                                    Termín: {new Date(ord.endDate || ord.deadline!).toLocaleDateString('cs-CZ')}
                                   </span>
                                 )}
+                                {ord.targetPricePerPiece && ord.targetPricePerPiece > 0 ? (
+                                  <span className="text-emerald-700 font-semibold">
+                                    Cílová cena: {ord.targetPricePerPiece.toFixed(2)} Kč/ks
+                                  </span>
+                                ) : null}
                               </div>
-                            )}
+                            </div>
                           </>
                         )}
                       </div>
@@ -2239,79 +2449,151 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                   </div>
                 </form>
 
-                <div className="divide-y divide-slate-800">
-                  {operations.map((op) => {
-                    const isEd = editingOp?.id === op.id;
-                    return (
-                      <div key={op.id} className="py-2.5 flex items-center justify-between gap-2 text-sm">
-                        {isEd ? (
-                          <div className="flex items-center gap-2 w-full">
-                            <input
-                              type="text"
-                              value={editingOp.name}
-                              onChange={(e) => setEditingOp({ ...editingOp, name: e.target.value })}
-                              className="flex-1 px-2.5 py-1 bg-[#F7F3E9] border border-[#D6DCD3] rounded-lg text-xs text-white"
-                            />
-                            <input
-                              type="number"
-                              value={editingOp.normPerHour}
-                              onChange={(e) =>
-                                setEditingOp({
-                                  ...editingOp,
-                                  normPerHour: parseInt(e.target.value || '100', 10),
-                                })
-                              }
-                              className="w-20 px-2 py-1 bg-[#F7F3E9] border border-[#D6DCD3] rounded-lg text-xs text-white font-mono"
-                            />
-                            <input
-                              type="number"
-                              step="0.05"
-                              value={editingOp.ratePerPiece}
-                              onChange={(e) =>
-                                setEditingOp({
-                                  ...editingOp,
-                                  ratePerPiece: parseFloat(e.target.value || '1.35'),
-                                })
-                              }
-                              className="w-20 px-2 py-1 bg-[#F7F3E9] border border-[#D6DCD3] rounded-lg text-xs text-emerald-400 font-mono"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleSaveEditOp(editingOp)}
-                              className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg text-xs font-bold cursor-pointer"
-                            >
-                              Uložit
-                            </button>
-                          </div>
-                        ) : (
-                          <>
-                            <div>
-                              <span className="font-semibold font-heading text-[#193F34]">{op.name}</span>
-                              {op.orderName && (
-                                <span className="ml-2 text-[10px] px-2 py-0.5 rounded bg-[#193F34]/10 text-[#193F34] font-bold border border-[#193F34]/20">
-                                  {op.orderName}
-                                </span>
-                              )}
-                              <span className="ml-2 text-xs text-[#4E6157] font-mono">
-                                Norma: <strong>{op.normPerHour} ks/h</strong> • Sazba:{' '}
-                                <strong className="text-emerald-400">
-                                  {op.ratePerPiece.toFixed(2)} Kč/ks
-                                </strong>{' '}
-                                (= {(op.normPerHour * op.ratePerPiece).toFixed(0)} Kč/h)
-                              </span>
+                <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-[#E4DDD0]">
+                  <span className="text-xs font-semibold text-[#193F34]">Filtrovat zobrazené operace:</span>
+                  <select
+                    value={filterOpOrderId}
+                    onChange={(e) => setFilterOpOrderId(e.target.value)}
+                    className="px-2.5 py-1 bg-white border border-[#D6DCD3] rounded-lg text-xs text-[#232B28] font-medium"
+                  >
+                    <option value="">Všechny operace ({operations.length})</option>
+                    <option value="global">Pouze globální (bez zakázky)</option>
+                    {orders.map((o) => (
+                      <option key={o.id} value={String(o.id)}>
+                        Zakázka: {o.name} ({operations.filter((op) => op.orderId === o.id).length})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="divide-y divide-[#E4DDD0] max-h-96 overflow-y-auto pr-1">
+                  {(() => {
+                    const displayedOps = operations.filter((op) => {
+                      if (!filterOpOrderId) return true;
+                      if (filterOpOrderId === 'global') return !op.orderId;
+                      return op.orderId === Number(filterOpOrderId);
+                    });
+
+                    if (displayedOps.length === 0) {
+                      return (
+                        <div className="py-6 text-center text-xs text-[#6C7E74]">
+                          Žádné operace neodpovídají zvolenému filtru.
+                        </div>
+                      );
+                    }
+
+                    return displayedOps.map((op) => {
+                      const isEd = editingOp?.id === op.id;
+                      return (
+                        <div key={op.id} className="py-2.5 flex items-center justify-between gap-2 text-sm">
+                          {isEd ? (
+                            <div className="flex flex-wrap items-center gap-2 w-full bg-[#F7F3E9] p-2 rounded-xl border border-[#193F34]/30">
+                              <input
+                                type="text"
+                                value={editingOp.name}
+                                onChange={(e) => setEditingOp({ ...editingOp, name: e.target.value })}
+                                className="flex-1 min-w-[120px] px-2.5 py-1 bg-white border border-[#D6DCD3] rounded-lg text-xs text-[#232B28] font-medium"
+                              />
+                              <select
+                                value={editingOp.orderId ?? ''}
+                                onChange={(e) =>
+                                  setEditingOp({
+                                    ...editingOp,
+                                    orderId: e.target.value ? Number(e.target.value) : null,
+                                  })
+                                }
+                                className="w-36 px-2 py-1 bg-white border border-[#D6DCD3] rounded-lg text-xs text-[#232B28]"
+                              >
+                                <option value="">-- Bez zakázky --</option>
+                                {orders.map((o) => (
+                                  <option key={o.id} value={o.id}>
+                                    {o.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  value={editingOp.normPerHour}
+                                  onChange={(e) =>
+                                    setEditingOp({
+                                      ...editingOp,
+                                      normPerHour: parseInt(e.target.value || '100', 10),
+                                    })
+                                  }
+                                  className="w-16 px-2 py-1 bg-white border border-[#D6DCD3] rounded-lg text-xs text-[#232B28] font-mono"
+                                  title="Norma ks/h"
+                                />
+                                <span className="text-[10px] text-[#4E6157]">ks/h</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  step="0.05"
+                                  value={editingOp.ratePerPiece}
+                                  onChange={(e) =>
+                                    setEditingOp({
+                                      ...editingOp,
+                                      ratePerPiece: parseFloat(e.target.value || '1.35'),
+                                    })
+                                  }
+                                  className="w-16 px-2 py-1 bg-white border border-[#D6DCD3] rounded-lg text-xs text-emerald-700 font-mono"
+                                  title="Sazba Kč/ks"
+                                />
+                                <span className="text-[10px] text-[#4E6157]">Kč/ks</span>
+                              </div>
+                              <div className="flex gap-1 ml-auto">
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveEditOp(editingOp)}
+                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold cursor-pointer"
+                                >
+                                  Uložit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingOp(null)}
+                                  className="px-2 py-1 bg-[#E9E1D2] hover:bg-[#DDD5C5] text-[#193F34] rounded-lg text-xs font-semibold cursor-pointer"
+                                >
+                                  Zrušit
+                                </button>
+                              </div>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => setEditingOp(op)}
-                              className="p-1.5 text-[#4E6157] hover:text-white rounded-lg hover:bg-[#E9E1D2] cursor-pointer"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    );
-                  })}
+                          ) : (
+                            <>
+                              <div>
+                                <span className="font-semibold font-heading text-[#193F34]">{op.name}</span>
+                                {op.orderName ? (
+                                  <span className="ml-2 text-[10px] px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold border border-indigo-200">
+                                    Zakázka: {op.orderName}
+                                  </span>
+                                ) : (
+                                  <span className="ml-2 text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-medium border border-slate-200">
+                                    Globální
+                                  </span>
+                                )}
+                                <span className="ml-2 text-xs text-[#4E6157] font-mono">
+                                  Norma: <strong>{op.normPerHour} ks/h</strong> • Sazba:{' '}
+                                  <strong className="text-emerald-700 font-bold">
+                                    {op.ratePerPiece.toFixed(2)} Kč/ks
+                                  </strong>{' '}
+                                  (= {(op.normPerHour * op.ratePerPiece).toFixed(0)} Kč/h)
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setEditingOp(op)}
+                                className="p-1.5 text-[#4E6157] hover:text-[#193F34] rounded-lg hover:bg-[#E9E1D2] cursor-pointer"
+                                title="Upravit operaci"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               </div>
             </div>

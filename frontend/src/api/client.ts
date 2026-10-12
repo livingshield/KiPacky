@@ -444,7 +444,8 @@ export async function saveOrder(data: {
   deadline?: string;
   targetPricePerPiece?: number;
   description?: string;
-}): Promise<void> {
+  operations?: Array<{ name: string; normPerHour: number; ratePerPiece: number }>;
+}): Promise<{ success: boolean; id: number }> {
   const res = await fetch(`${API_BASE}?action=save-order`, {
     method: 'POST',
     headers: getAuthHeaders(),
@@ -454,6 +455,7 @@ export async function saveOrder(data: {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || 'Chyba při ukládání zakázky');
   }
+  return res.json();
 }
 
 export async function fetchOperations(orderId?: number): Promise<OperationItem[]> {

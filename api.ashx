@@ -542,8 +542,9 @@ public class KipackyApiHandler : IHttpHandler
             // 1. Aktivní zakázky s rozpracovaností a cílovým počtem kusů (Fáze 2 & 5)
             var activeOrders = new List<Dictionary<string, object>>();
             string orderSql = @"
-SELECT o.Id, o.Name, ISNULL(o.TargetPieces, 0), o.Deadline, o.Description,
-       ISNULL((SELECT SUM(ISNULL(p.ValidatedPieces, p.SubmittedPieces)) FROM [Kipacky].[kipa_ProductionLogs] p WHERE p.OrderId = o.Id AND p.Status = 'Approved'), 0) AS CompletedPieces
+SELECT o.Id, o.Name, ISNULL(o.TotalPiecesTarget, ISNULL(o.TargetPieces, 0)) AS TargetPcs, ISNULL(o.EndDate, o.Deadline) AS EndD, o.Description,
+       ISNULL((SELECT SUM(ISNULL(p.ValidatedPieces, p.SubmittedPieces)) FROM [Kipacky].[kipa_ProductionLogs] p WHERE p.OrderId = o.Id AND p.Status = 'Approved'), 0) AS CompletedPieces,
+       o.StartDate, ISNULL(o.TargetPricePerPiece, 0) AS TargetPrice
 FROM [Kipacky].[kipa_Orders] o
 WHERE o.IsActive = 1
 ORDER BY o.Name ASC";
@@ -555,14 +556,20 @@ ORDER BY o.Name ASC";
                     {
                         int targetPcs = reader.GetInt32(2);
                         int compPcs = Convert.ToInt32(reader.GetValue(5));
-                        DateTime? dline = reader.IsDBNull(3) ? (DateTime?)null : reader.GetDateTime(3);
+                        DateTime? endD = reader.IsDBNull(3) ? (DateTime?)null : reader.GetDateTime(3);
+                        DateTime? startD = reader.IsDBNull(6) ? (DateTime?)null : reader.GetDateTime(6);
+                        decimal targetPrice = reader.GetDecimal(7);
 
                         activeOrders.Add(new Dictionary<string, object>
                         {
                             { "id", reader.GetInt32(0) },
                             { "name", reader.GetString(1) },
                             { "targetPieces", targetPcs },
-                            { "deadline", dline.HasValue ? dline.Value.ToString("yyyy-MM-dd") : null },
+                            { "totalPiecesTarget", targetPcs },
+                            { "deadline", endD.HasValue ? endD.Value.ToString("yyyy-MM-dd") : null },
+                            { "endDate", endD.HasValue ? endD.Value.ToString("yyyy-MM-dd") : null },
+                            { "startDate", startD.HasValue ? startD.Value.ToString("yyyy-MM-dd") : null },
+                            { "targetPricePerPiece", Convert.ToDouble(targetPrice) },
                             { "description", reader.IsDBNull(4) ? "" : reader.GetString(4) },
                             { "completedPieces", compPcs },
                             { "remainingPieces", (targetPcs > 0 && targetPcs > compPcs) ? (targetPcs - compPcs) : 0 },
@@ -1937,6 +1944,31 @@ VALUES (@n, @a, @tp, @tp, @ed, @ed, @sd, @tpr, @ds)", conn))
                     cmd.Parameters.AddWithValue("@tpr", targetPrice);
                     cmd.Parameters.AddWithValue("@ds", string.IsNullOrEmpty(description) ? (object)DBNull.Value : description);
                     id = Convert.ToInt32(cmd.ExecuteScalar());
+                }
+            }
+
+            // Pokud byly předány operace pro tuto zakázku, vytvoříme je rovnou svázané s tímto OrderId
+            if (id > 0 && data.ContainsKey("operations") && data["operations"] is System.Collections.IEnumerable opsList)
+            {
+                foreach (var item in opsList)
+                {
+                    if (item is Dictionary<string, object> opDict)
+                    {
+                        string opName = opDict.ContainsKey("name") ? Convert.ToString(opDict["name"]).Trim() : "";
+                        if (!string.IsNullOrWhiteSpace(opName))
+                        {
+                            int norm = opDict.ContainsKey("normPerHour") ? Convert.ToInt32(opDict["normPerHour"]) : 100;
+                            decimal rate = opDict.ContainsKey("ratePerPiece") ? Convert.ToDecimal(opDict["ratePerPiece"], CultureInfo.InvariantCulture) : 1.35m;
+                            using (var opCmd = new SqlCommand("INSERT INTO [Kipacky].[kipa_Operations] (Name, NormPerHour, RatePerPiece, IsActive, OrderId) VALUES (@n, @norm, @rate, 1, @ord)", conn))
+                            {
+                                opCmd.Parameters.AddWithValue("@n", opName);
+                                opCmd.Parameters.AddWithValue("@norm", norm);
+                                opCmd.Parameters.AddWithValue("@rate", rate);
+                                opCmd.Parameters.AddWithValue("@ord", id);
+                                opCmd.ExecuteNonQuery();
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -110,15 +110,20 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
   const allOperations = statusData.activeOperations || [];
   const [selectedOrderId, setSelectedOrderId] = useState<number>(orders[0]?.id || 0);
 
-  const availableOperations = allOperations.filter(
-    (op) => !op.orderId || op.orderId === selectedOrderId
-  );
+  const availableOperations = (() => {
+    const orderSpecificOps = allOperations.filter((op) => op.orderId === selectedOrderId);
+    return orderSpecificOps.length > 0
+      ? orderSpecificOps
+      : allOperations.filter((op) => !op.orderId);
+  })();
   const [selectedOpId, setSelectedOpId] = useState<number>(availableOperations[0]?.id || 0);
 
   useEffect(() => {
-    const validOps = allOperations.filter(
-      (op) => !op.orderId || op.orderId === selectedOrderId
-    );
+    const orderSpecificOps = allOperations.filter((op) => op.orderId === selectedOrderId);
+    const validOps = orderSpecificOps.length > 0
+      ? orderSpecificOps
+      : allOperations.filter((op) => !op.orderId);
+
     if (!validOps.some((op) => op.id === selectedOpId)) {
       setSelectedOpId(validOps[0]?.id || 0);
     }
@@ -225,25 +230,30 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
                 onChange={(e) => setSelectedOrderId(Number(e.target.value))}
                 className="w-full px-3.5 py-3 bg-[#102E26] border border-[#426456] rounded-[12px] text-[#F7F3E9] font-medium text-sm focus:outline-none focus:border-[#D7BE97]"
               >
-                {orders.map((ord) => (
-                  <option key={ord.id} value={ord.id} className="bg-[#102E26] text-[#F7F3E9]">
-                    {ord.name} {ord.targetPieces && ord.targetPieces > 0 ? `(Cíl: ${ord.completedPieces || 0} / ${ord.targetPieces} ks)` : ''}
-                  </option>
-                ))}
+                {orders.map((ord) => {
+                  const target = ord.totalPiecesTarget ?? ord.targetPieces ?? 0;
+                  return (
+                    <option key={ord.id} value={ord.id} className="bg-[#102E26] text-[#F7F3E9]">
+                      {ord.name} {target > 0 ? `(Cíl: ${ord.completedPieces || 0} / ${target} ks)` : ''}
+                    </option>
+                  );
+                })}
               </select>
 
-              {/* Informace o cílovém objemu a rozpracovanosti (sekce 9.3) */}
+              {/* Informace o cílovém objemu a rozpracovanosti (sekce 9.3 & Fáze 2.1) */}
               {(() => {
                 const currentOrder = orders.find((o) => o.id === selectedOrderId);
-                if (!currentOrder || !currentOrder.targetPieces || currentOrder.targetPieces <= 0) return null;
+                const target = currentOrder?.totalPiecesTarget ?? currentOrder?.targetPieces ?? 0;
+                if (!currentOrder || target <= 0) return null;
                 const percent = Math.min(100, currentOrder.percentDone || 0);
+                const endDateVal = currentOrder.endDate || currentOrder.deadline;
 
                 return (
                   <div className="mt-2.5 p-3 rounded-[12px] bg-[#102E26] border border-[#426456] text-xs">
                     <div className="flex items-center justify-between text-[#C9DDD0] mb-1.5 font-medium">
                       <span>Postup plnění zakázky:</span>
                       <span className="font-mono font-bold text-[#D7BE97]">
-                        {currentOrder.completedPieces || 0} / {currentOrder.targetPieces} ks ({percent}%)
+                        {currentOrder.completedPieces || 0} / {target} ks ({percent}%)
                       </span>
                     </div>
                     <div className="w-full bg-[#285446] rounded-full h-2.5 overflow-hidden mb-1">
@@ -252,12 +262,17 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
                         style={{ width: `${percent}%` }}
                       />
                     </div>
-                    {currentOrder.deadline && (
-                      <div className="text-[11px] text-[#D7BE97]/90 flex items-center gap-1 mt-1 font-medium">
-                        <Clock className="w-3 h-3 text-[#D7BE97]" />
-                        Termín dokončení: {new Date(currentOrder.deadline).toLocaleDateString('cs-CZ')}
-                      </div>
-                    )}
+                    <div className="flex flex-wrap items-center justify-between text-[11px] text-[#D7BE97]/90 mt-1 font-medium gap-1">
+                      {currentOrder.startDate && (
+                        <span>Od: {new Date(currentOrder.startDate).toLocaleDateString('cs-CZ')}</span>
+                      )}
+                      {endDateVal && (
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-[#D7BE97]" />
+                          Do: {new Date(endDateVal).toLocaleDateString('cs-CZ')}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 );
               })()}
