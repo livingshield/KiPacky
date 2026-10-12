@@ -24,20 +24,13 @@ export const App: React.FC = () => {
       }
     }
 
-    // Ověření existence přihlášení administrátora
-    checkAuth().then((res) => {
-      if (res.isAuthenticated) {
-        setAdminUser(res.username);
-      }
-    });
+    // Poznámka: Z bezpečnostních důvodů se automaticky nepřeskakuje na admina.
+    // Při kliknutí na zámeček na kiosku se VŽDY vyžaduje zadání Master PINu / hesla.
   }, []);
 
   const handleOpenAdmin = () => {
-    if (adminUser) {
-      setView('admin');
-    } else {
-      setView('login');
-    }
+    // Vždy vyžadovat zadání PINu / hesla před vstupem do administrace
+    setView('login');
   };
 
   const handleLoginSuccess = (username: string) => {
