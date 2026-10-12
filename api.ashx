@@ -2457,6 +2457,7 @@ VALUES (@dt, @st, @et, @emp, @ord, @note)", conn))
         var logs = new List<Dictionary<string, object>>();
         var yearLogs = new List<Dictionary<string, object>>();
         var prodLogs = new List<Dictionary<string, object>>();
+        var ytdNormHoursMap = new Dictionary<int, double>();
 
         using (var conn = new SqlConnection(CONN_STR))
         {
@@ -2536,7 +2537,6 @@ ORDER BY Timestamp ASC";
             }
 
             // Produkce za celý rok pro výpočet limitu 300h u DPP (Normočas)
-            var ytdNormHoursMap = new Dictionary<int, double>();
             string ytdProdSql = @"
 SELECT p.EmployeeId,
        SUM(CASE WHEN op.NormPerHour > 0 THEN CAST(ISNULL(p.ValidatedPieces, p.SubmittedPieces) AS FLOAT) / op.NormPerHour ELSE 0 END) AS YtdNorm
