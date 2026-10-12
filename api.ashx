@@ -2016,12 +2016,16 @@ VALUES (@n, @a, @tp, @tp, @ed, @ed, @sd, @tpr, @ds)", conn))
             }
 
             // Pokud byly předány operace pro tuto zakázku, vytvoříme je rovnou svázané s tímto OrderId
-            if (id > 0 && data.ContainsKey("operations") && data["operations"] is System.Collections.IEnumerable opsList)
+            if (id > 0 && data.ContainsKey("operations") && data["operations"] != null)
             {
-                foreach (var item in opsList)
+                var opsList = data["operations"] as System.Collections.IEnumerable;
+                if (opsList != null)
                 {
-                    if (item is Dictionary<string, object> opDict)
+                    foreach (var item in opsList)
                     {
+                        var opDict = item as Dictionary<string, object>;
+                        if (opDict != null)
+                        {
                         string opName = opDict.ContainsKey("name") ? Convert.ToString(opDict["name"]).Trim() : "";
                         if (!string.IsNullOrWhiteSpace(opName))
                         {
@@ -2039,6 +2043,7 @@ VALUES (@n, @a, @tp, @tp, @ed, @ed, @sd, @tpr, @ds)", conn))
                     }
                 }
             }
+        }
         }
         SendJson(context, new Dictionary<string, object> { { "success", true }, { "id", id } });
     }
