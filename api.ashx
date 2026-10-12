@@ -70,6 +70,9 @@ public class KipackyApiHandler : IHttpHandler
                 case "login":
                     HandleLogin(context);
                     break;
+                case "admin-pin-login":
+                    HandleAdminPinLogin(context);
+                    break;
                 case "logout":
                     HandleLogout(context);
                     break;
@@ -116,6 +119,10 @@ public class KipackyApiHandler : IHttpHandler
                 case "get-orders":
                     RequireAuth(context);
                     HandleGetOrders(context);
+                    break;
+                case "get-order-detail":
+                    RequireAuth(context);
+                    HandleGetOrderDetail(context);
                     break;
                 case "save-order":
                     RequireAuth(context);
@@ -237,7 +244,8 @@ public class KipackyApiHandler : IHttpHandler
         string user = data.ContainsKey("Username") ? Convert.ToString(data["Username"]) : (data.ContainsKey("username") ? Convert.ToString(data["username"]) : "");
         string pass = data.ContainsKey("Password") ? Convert.ToString(data["Password"]) : (data.ContainsKey("password") ? Convert.ToString(data["password"]) : "");
 
-        if (user == ADMIN_USER && pass == ADMIN_PASS)
+        bool isMasterPin = (user == "admin" || string.IsNullOrEmpty(user)) && (pass == "1452" || pass == "1408");
+        if ((user == ADMIN_USER && pass == ADMIN_PASS) || isMasterPin)
         {
             string token = "kipacky_admin_ok_" + Guid.NewGuid().ToString("N");
             var cookie = new HttpCookie(COOKIE_NAME, token)
@@ -251,13 +259,42 @@ public class KipackyApiHandler : IHttpHandler
             SendJson(context, new Dictionary<string, object>
             {
                 { "success", true },
-                { "username", ADMIN_USER },
+                { "username", isMasterPin ? (pass == "1408" ? "Admin (Ján)" : "Admin (Marta)") : ADMIN_USER },
                 { "token", token }
             });
         }
         else
         {
             SendError(context, 401, "Nespr\u00E1vn\u00E9 p\u0159ihla\u0161ovac\u00ED jm\u00E9no nebo heslo.");
+        }
+    }
+
+    private void HandleAdminPinLogin(HttpContext context)
+    {
+        var data = ReadJsonBody(context);
+        string pin = data.ContainsKey("pin") ? Convert.ToString(data["pin"]) : (data.ContainsKey("pinCode") ? Convert.ToString(data["pinCode"]) : "");
+
+        if (pin == "1452" || pin == "1408")
+        {
+            string token = "kipacky_admin_ok_" + Guid.NewGuid().ToString("N");
+            var cookie = new HttpCookie(COOKIE_NAME, token)
+            {
+                HttpOnly = true,
+                Expires = DateTime.UtcNow.AddDays(7),
+                Path = "/"
+            };
+            context.Response.Cookies.Add(cookie);
+
+            SendJson(context, new Dictionary<string, object>
+            {
+                { "success", true },
+                { "username", pin == "1408" ? "Admin (Ján)" : "Admin (Marta)" },
+                { "token", token }
+            });
+        }
+        else
+        {
+            SendError(context, 401, "Neplatn\u00FD administr\u00E1torsk\u00FD Master PIN.");
         }
     }
 
@@ -387,9 +424,9 @@ ORDER BY o.Name ASC";
                 }
             }
 
-            // 2. Aktivní operace (Fáze 2)
+            // 2. Aktivní operace (Fáze 2 & 2.1 – svázané s zakázkou přes OrderId)
             var activeOperations = new List<Dictionary<string, object>>();
-            using (var cmd = new SqlCommand("SELECT Id, Name, NormPerHour, RatePerPiece FROM [Kipacky].[kipa_Operations] WHERE IsActive = 1 ORDER BY Name ASC", conn))
+            using (var cmd = new SqlCommand("SELECT Id, Name, NormPerHour, RatePerPiece, OrderId FROM [Kipacky].[kipa_Operations] WHERE IsActive = 1 ORDER BY Name ASC", conn))
             {
                 using (var reader = cmd.ExecuteReader())
                 {
@@ -400,7 +437,8 @@ ORDER BY o.Name ASC";
                             { "id", reader.GetInt32(0) },
                             { "name", reader.GetString(1) },
                             { "normPerHour", reader.GetInt32(2) },
-                            { "ratePerPiece", Convert.ToDouble(reader.GetDecimal(3)) }
+                            { "ratePerPiece", Convert.ToDouble(reader.GetDecimal(3)) },
+                            { "orderId", reader.IsDBNull(4) ? (int?)null : reader.GetInt32(4) }
                         });
                     }
                 }
@@ -1053,6 +1091,20 @@ ORDER BY Timestamp ASC", conn))
                 }
             }
 
+            // 2b. Celoroční normočas pro DPP limit (300h)
+            double ytdNormHours = 0;
+            using (var cmd = new SqlCommand(@"
+SELECT ISNULL(SUM(CASE WHEN op.NormPerHour > 0 THEN CAST(ISNULL(p.ValidatedPieces, p.SubmittedPieces) AS FLOAT) / op.NormPerHour ELSE 0 END), 0)
+FROM [Kipacky].[kipa_ProductionLogs] p
+JOIN [Kipacky].[kipa_Operations] op ON p.OperationId = op.Id
+WHERE p.EmployeeId = @empId AND p.[Date] >= @yStart AND p.[Date] < @yEnd AND p.[Status] = 'Approved'", conn))
+            {
+                cmd.Parameters.AddWithValue("@empId", empId);
+                cmd.Parameters.AddWithValue("@yStart", yearStart);
+                cmd.Parameters.AddWithValue("@yEnd", yearEnd);
+                ytdNormHours = Convert.ToDouble(cmd.ExecuteScalar());
+            }
+
             // 3. Výroba za měsíc
             var empProd = new List<Dictionary<string, object>>();
             using (var cmd = new SqlCommand(@"
@@ -1182,6 +1234,17 @@ WHERE p.EmployeeId = @empId AND p.[Date] >= @start AND p.[Date] < @end", conn))
             double totalNetHours = 0;
             double totalEarnedCzk = 0;
             int totalApprovedPieces = 0;
+            double totalNormHours = 0;
+
+            foreach (var p in empProd)
+            {
+                if (Convert.ToString(p["status"]) == "Approved")
+                {
+                    int val = p["validated"] != null ? Convert.ToInt32(p["validated"]) : Convert.ToInt32(p["submitted"]);
+                    int n = Convert.ToInt32(p["norm"]);
+                    if (n > 0) totalNormHours += ((double)val / n);
+                }
+            }
 
             foreach (var s in shifts)
             {
@@ -1234,9 +1297,13 @@ WHERE p.EmployeeId = @empId AND p.[Date] >= @start AND p.[Date] < @end", conn))
                 { "month", month },
                 { "shifts", shifts },
                 { "totalNetHours", Math.Round(totalNetHours, 2) },
+                { "totalNormHours", Math.Round(totalNormHours, 2) },
+                { "totalProductiveHours", Math.Round(totalNormHours, 2) },
                 { "totalEarnedCzk", Math.Round(totalEarnedCzk, 2) },
                 { "totalApprovedPieces", totalApprovedPieces },
                 { "yearToDateNetHours", Math.Round(ytdNetHours, 2) },
+                { "yearToDateNormHours", Math.Round(ytdNormHours, 2) },
+                { "remainingDppHours", Math.Max(0, 300 - Math.Round(ytdNormHours, 2)) },
                 { "dppLimitHours", 300 }
             });
         }
@@ -1252,13 +1319,17 @@ WHERE p.EmployeeId = @empId AND p.[Date] >= @start AND p.[Date] < @end", conn))
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
-            using (var cmd = new SqlCommand("SELECT Id, FullName, PinCode, ContractType, IsActive, CreatedAt, Phone, Email, BankAccount, PersonalDataConfirmedAt FROM [Kipacky].[kipa_Employees] ORDER BY IsActive DESC, FullName ASC", conn))
+            using (var cmd = new SqlCommand("SELECT Id, FullName, PinCode, ContractType, IsActive, CreatedAt, Phone, Email, BankAccount, PersonalDataConfirmedAt, ContractStartDate, ContractEndDate, ISNULL(SelfScheduled, 0) AS SelfScheduled FROM [Kipacky].[kipa_Employees] ORDER BY IsActive DESC, FullName ASC", conn))
             {
                 using (var reader = cmd.ExecuteReader())
                 {
                     while (reader.Read())
                     {
                         DateTime? confAt = reader.IsDBNull(9) ? (DateTime?)null : reader.GetDateTime(9);
+                        DateTime? cStart = reader.IsDBNull(10) ? (DateTime?)null : reader.GetDateTime(10);
+                        DateTime? cEnd = reader.IsDBNull(11) ? (DateTime?)null : reader.GetDateTime(11);
+                        bool selfScheduled = reader.GetBoolean(12);
+
                         list.Add(new Dictionary<string, object>
                         {
                             { "id", reader.GetInt32(0) },
@@ -1270,7 +1341,10 @@ WHERE p.EmployeeId = @empId AND p.[Date] >= @start AND p.[Date] < @end", conn))
                             { "phone", reader.IsDBNull(6) ? "" : reader.GetString(6) },
                             { "email", reader.IsDBNull(7) ? "" : reader.GetString(7) },
                             { "bankAccount", reader.IsDBNull(8) ? "" : reader.GetString(8) },
-                            { "personalDataConfirmedAt", confAt.HasValue ? confAt.Value.ToString("s") : null }
+                            { "personalDataConfirmedAt", confAt.HasValue ? confAt.Value.ToString("s") : null },
+                            { "contractStartDate", cStart.HasValue ? cStart.Value.ToString("yyyy-MM-dd") : null },
+                            { "contractEndDate", cEnd.HasValue ? cEnd.Value.ToString("yyyy-MM-dd") : null },
+                            { "selfScheduled", selfScheduled }
                         });
                     }
                 }
@@ -1315,8 +1389,13 @@ WHERE p.EmployeeId = @empId AND p.[Date] >= @start AND p.[Date] < @end", conn))
         string email = data.ContainsKey("email") ? Convert.ToString(data["email"]).Trim() : "";
         string bankAccount = data.ContainsKey("bankAccount") ? Convert.ToString(data["bankAccount"]).Trim() : "";
         bool isActive = data.ContainsKey("isActive") ? Convert.ToBoolean(data["isActive"]) : true;
+        string csStr = data.ContainsKey("contractStartDate") ? Convert.ToString(data["contractStartDate"]) : null;
+        DateTime? contractStartDate = (!string.IsNullOrEmpty(csStr)) ? (DateTime?)DateTime.Parse(csStr) : null;
+        string ceStr = data.ContainsKey("contractEndDate") ? Convert.ToString(data["contractEndDate"]) : null;
+        DateTime? contractEndDate = (!string.IsNullOrEmpty(ceStr)) ? (DateTime?)DateTime.Parse(ceStr) : null;
+        bool selfScheduled = data.ContainsKey("selfScheduled") && Convert.ToBoolean(data["selfScheduled"]);
 
-        if (string.IsNullOrWhiteSpace(name)) { SendError(context, 400, "Jm\u00E9no je povinn\u00E9."); return; }
+        if (string.IsNullOrWhiteSpace(name)) { SendError(context, 400, "Jm\u00E9no je povinn\u00ED."); return; }
         if (pin.Length != 4) { SendError(context, 400, "PIN mus\u00ED m\u00EDt p\u0159esn\u011B 4 \u010D\u00EDslice."); return; }
 
         using (var conn = new SqlConnection(CONN_STR))
@@ -1339,9 +1418,9 @@ WHERE p.EmployeeId = @empId AND p.[Date] >= @start AND p.[Date] < @end", conn))
             }
 
             using (var cmd = new SqlCommand(@"
-INSERT INTO [Kipacky].[kipa_Employees] (FullName, PinCode, ContractType, IsActive, CreatedAt, Phone, Email, BankAccount)
+INSERT INTO [Kipacky].[kipa_Employees] (FullName, PinCode, ContractType, IsActive, CreatedAt, Phone, Email, BankAccount, ContractStartDate, ContractEndDate, SelfScheduled)
 OUTPUT INSERTED.Id
-VALUES (@n, @p, @c, @a, GETUTCDATE(), @ph, @em, @ba)", conn))
+VALUES (@n, @p, @c, @a, GETUTCDATE(), @ph, @em, @ba, @cs, @ce, @ss)", conn))
             {
                 cmd.Parameters.AddWithValue("@n", name);
                 cmd.Parameters.AddWithValue("@p", pin);
@@ -1350,6 +1429,9 @@ VALUES (@n, @p, @c, @a, GETUTCDATE(), @ph, @em, @ba)", conn))
                 cmd.Parameters.AddWithValue("@ph", string.IsNullOrEmpty(phone) ? (object)DBNull.Value : phone);
                 cmd.Parameters.AddWithValue("@em", string.IsNullOrEmpty(email) ? (object)DBNull.Value : email);
                 cmd.Parameters.AddWithValue("@ba", string.IsNullOrEmpty(bankAccount) ? (object)DBNull.Value : bankAccount);
+                cmd.Parameters.AddWithValue("@cs", contractStartDate.HasValue ? (object)contractStartDate.Value : DBNull.Value);
+                cmd.Parameters.AddWithValue("@ce", contractEndDate.HasValue ? (object)contractEndDate.Value : DBNull.Value);
+                cmd.Parameters.AddWithValue("@ss", selfScheduled);
                 int newId = Convert.ToInt32(cmd.ExecuteScalar());
 
                 SendJson(context, new Dictionary<string, object>
@@ -1361,7 +1443,10 @@ VALUES (@n, @p, @c, @a, GETUTCDATE(), @ph, @em, @ba)", conn))
                     { "isActive", isActive },
                     { "phone", phone },
                     { "email", email },
-                    { "bankAccount", bankAccount }
+                    { "bankAccount", bankAccount },
+                    { "contractStartDate", contractStartDate.HasValue ? contractStartDate.Value.ToString("yyyy-MM-dd") : null },
+                    { "contractEndDate", contractEndDate.HasValue ? contractEndDate.Value.ToString("yyyy-MM-dd") : null },
+                    { "selfScheduled", selfScheduled }
                 });
             }
         }
@@ -1380,6 +1465,11 @@ VALUES (@n, @p, @c, @a, GETUTCDATE(), @ph, @em, @ba)", conn))
         string email = data.ContainsKey("email") ? Convert.ToString(data["email"]).Trim() : null;
         string bankAccount = data.ContainsKey("bankAccount") ? Convert.ToString(data["bankAccount"]).Trim() : null;
         bool isActive = data.ContainsKey("isActive") ? Convert.ToBoolean(data["isActive"]) : true;
+        string csStr = data.ContainsKey("contractStartDate") ? Convert.ToString(data["contractStartDate"]) : null;
+        DateTime? contractStartDate = (!string.IsNullOrEmpty(csStr)) ? (DateTime?)DateTime.Parse(csStr) : null;
+        string ceStr = data.ContainsKey("contractEndDate") ? Convert.ToString(data["contractEndDate"]) : null;
+        DateTime? contractEndDate = (!string.IsNullOrEmpty(ceStr)) ? (DateTime?)DateTime.Parse(ceStr) : null;
+        bool selfScheduled = data.ContainsKey("selfScheduled") && Convert.ToBoolean(data["selfScheduled"]);
 
         using (var conn = new SqlConnection(CONN_STR))
         {
@@ -1414,7 +1504,10 @@ SET FullName = ISNULL(@n, FullName),
     IsActive = @a,
     Phone = ISNULL(@ph, Phone),
     Email = ISNULL(@em, Email),
-    BankAccount = ISNULL(@ba, BankAccount)
+    BankAccount = ISNULL(@ba, BankAccount),
+    ContractStartDate = @cs,
+    ContractEndDate = @ce,
+    SelfScheduled = @ss
 WHERE Id = @id", conn))
             {
                 cmd.Parameters.AddWithValue("@n", (object)name ?? DBNull.Value);
@@ -1424,6 +1517,9 @@ WHERE Id = @id", conn))
                 cmd.Parameters.AddWithValue("@ph", (object)phone ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@em", (object)email ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@ba", (object)bankAccount ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@cs", contractStartDate.HasValue ? (object)contractStartDate.Value : DBNull.Value);
+                cmd.Parameters.AddWithValue("@ce", contractEndDate.HasValue ? (object)contractEndDate.Value : DBNull.Value);
+                cmd.Parameters.AddWithValue("@ss", selfScheduled);
                 cmd.Parameters.AddWithValue("@id", id);
                 cmd.ExecuteNonQuery();
             }
@@ -1591,7 +1687,12 @@ WHERE Id = @id", conn))
         {
             conn.Open();
             string sql = @"
-SELECT o.Id, o.Name, o.IsActive, o.CreatedAt, ISNULL(o.TargetPieces, 0), o.Deadline, o.Description,
+SELECT o.Id, o.Name, o.IsActive, o.CreatedAt, 
+       ISNULL(o.TotalPiecesTarget, ISNULL(o.TargetPieces, 0)) AS TargetPcs,
+       ISNULL(o.EndDate, o.Deadline) AS EndD,
+       o.Description,
+       o.StartDate,
+       ISNULL(o.TargetPricePerPiece, 0) AS TargetPrice,
        ISNULL((SELECT SUM(ISNULL(p.ValidatedPieces, p.SubmittedPieces)) FROM [Kipacky].[kipa_ProductionLogs] p WHERE p.OrderId = o.Id AND p.Status = 'Approved'), 0) AS CompletedPieces
 FROM [Kipacky].[kipa_Orders] o
 ORDER BY o.IsActive DESC, o.Id DESC";
@@ -1603,8 +1704,10 @@ ORDER BY o.IsActive DESC, o.Id DESC";
                     while (reader.Read())
                     {
                         int targetPcs = reader.GetInt32(4);
-                        int compPcs = Convert.ToInt32(reader.GetValue(7));
-                        DateTime? dline = reader.IsDBNull(5) ? (DateTime?)null : reader.GetDateTime(5);
+                        int compPcs = Convert.ToInt32(reader.GetValue(9));
+                        DateTime? endD = reader.IsDBNull(5) ? (DateTime?)null : reader.GetDateTime(5);
+                        DateTime? startD = reader.IsDBNull(7) ? (DateTime?)null : reader.GetDateTime(7);
+                        decimal targetPrice = reader.GetDecimal(8);
 
                         list.Add(new Dictionary<string, object>
                         {
@@ -1613,7 +1716,11 @@ ORDER BY o.IsActive DESC, o.Id DESC";
                             { "isActive", reader.GetBoolean(2) },
                             { "createdAt", reader.GetDateTime(3).ToString("s") },
                             { "targetPieces", targetPcs },
-                            { "deadline", dline.HasValue ? dline.Value.ToString("yyyy-MM-dd") : null },
+                            { "totalPiecesTarget", targetPcs },
+                            { "deadline", endD.HasValue ? endD.Value.ToString("yyyy-MM-dd") : null },
+                            { "endDate", endD.HasValue ? endD.Value.ToString("yyyy-MM-dd") : null },
+                            { "startDate", startD.HasValue ? startD.Value.ToString("yyyy-MM-dd") : null },
+                            { "targetPricePerPiece", Convert.ToDouble(targetPrice) },
                             { "description", reader.IsDBNull(6) ? "" : reader.GetString(6) },
                             { "completedPieces", compPcs },
                             { "remainingPieces", (targetPcs > 0 && targetPcs > compPcs) ? (targetPcs - compPcs) : 0 },
@@ -1631,9 +1738,12 @@ ORDER BY o.IsActive DESC, o.Id DESC";
         var data = ReadJsonBody(context);
         int id = data.ContainsKey("id") ? Convert.ToInt32(data["id"]) : 0;
         string name = data.ContainsKey("name") ? Convert.ToString(data["name"]).Trim() : "";
-        int targetPieces = data.ContainsKey("targetPieces") ? Convert.ToInt32(data["targetPieces"]) : 0;
-        string deadlineStr = data.ContainsKey("deadline") ? Convert.ToString(data["deadline"]) : null;
-        DateTime? deadline = (!string.IsNullOrEmpty(deadlineStr)) ? (DateTime?)DateTime.Parse(deadlineStr) : null;
+        int targetPieces = data.ContainsKey("totalPiecesTarget") ? Convert.ToInt32(data["totalPiecesTarget"]) : (data.ContainsKey("targetPieces") ? Convert.ToInt32(data["targetPieces"]) : 0);
+        string startStr = data.ContainsKey("startDate") ? Convert.ToString(data["startDate"]) : null;
+        DateTime? startDate = (!string.IsNullOrEmpty(startStr)) ? (DateTime?)DateTime.Parse(startStr) : null;
+        string endStr = data.ContainsKey("endDate") ? Convert.ToString(data["endDate"]) : (data.ContainsKey("deadline") ? Convert.ToString(data["deadline"]) : null);
+        DateTime? endDate = (!string.IsNullOrEmpty(endStr)) ? (DateTime?)DateTime.Parse(endStr) : null;
+        decimal targetPrice = data.ContainsKey("targetPricePerPiece") ? Convert.ToDecimal(data["targetPricePerPiece"], CultureInfo.InvariantCulture) : 0m;
         string description = data.ContainsKey("description") ? Convert.ToString(data["description"]).Trim() : "";
         bool isActive = data.ContainsKey("isActive") ? Convert.ToBoolean(data["isActive"]) : true;
 
@@ -1650,13 +1760,15 @@ ORDER BY o.IsActive DESC, o.Id DESC";
             {
                 using (var cmd = new SqlCommand(@"
 UPDATE [Kipacky].[kipa_Orders]
-SET Name = @n, IsActive = @a, TargetPieces = @tp, Deadline = @dl, Description = @ds
+SET Name = @n, IsActive = @a, TargetPieces = @tp, TotalPiecesTarget = @tp, Deadline = @ed, EndDate = @ed, StartDate = @sd, TargetPricePerPiece = @tpr, Description = @ds
 WHERE Id = @id", conn))
                 {
                     cmd.Parameters.AddWithValue("@n", name);
                     cmd.Parameters.AddWithValue("@a", isActive);
                     cmd.Parameters.AddWithValue("@tp", targetPieces);
-                    cmd.Parameters.AddWithValue("@dl", deadline.HasValue ? (object)deadline.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@ed", endDate.HasValue ? (object)endDate.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@sd", startDate.HasValue ? (object)startDate.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@tpr", targetPrice);
                     cmd.Parameters.AddWithValue("@ds", string.IsNullOrEmpty(description) ? (object)DBNull.Value : description);
                     cmd.Parameters.AddWithValue("@id", id);
                     cmd.ExecuteNonQuery();
@@ -1665,29 +1777,211 @@ WHERE Id = @id", conn))
             else
             {
                 using (var cmd = new SqlCommand(@"
-INSERT INTO [Kipacky].[kipa_Orders] (Name, IsActive, TargetPieces, Deadline, Description)
-VALUES (@n, @a, @tp, @dl, @ds)", conn))
+INSERT INTO [Kipacky].[kipa_Orders] (Name, IsActive, TargetPieces, TotalPiecesTarget, Deadline, EndDate, StartDate, TargetPricePerPiece, Description)
+OUTPUT INSERTED.Id
+VALUES (@n, @a, @tp, @tp, @ed, @ed, @sd, @tpr, @ds)", conn))
                 {
                     cmd.Parameters.AddWithValue("@n", name);
                     cmd.Parameters.AddWithValue("@a", isActive);
                     cmd.Parameters.AddWithValue("@tp", targetPieces);
-                    cmd.Parameters.AddWithValue("@dl", deadline.HasValue ? (object)deadline.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@ed", endDate.HasValue ? (object)endDate.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@sd", startDate.HasValue ? (object)startDate.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@tpr", targetPrice);
                     cmd.Parameters.AddWithValue("@ds", string.IsNullOrEmpty(description) ? (object)DBNull.Value : description);
-                    cmd.ExecuteNonQuery();
+                    id = Convert.ToInt32(cmd.ExecuteScalar());
                 }
             }
         }
-        SendJson(context, new Dictionary<string, object> { { "success", true } });
+        SendJson(context, new Dictionary<string, object> { { "success", true }, { "id", id } });
+    }
+
+    private void HandleGetOrderDetail(HttpContext context)
+    {
+        string idStr = context.Request.QueryString["orderId"] ?? context.Request.QueryString["id"];
+        if (string.IsNullOrEmpty(idStr))
+        {
+            SendError(context, 400, "Chyb\u00ED ID zak\u00E1zky.");
+            return;
+        }
+        int orderId = Convert.ToInt32(idStr);
+
+        Dictionary<string, object> orderData = null;
+        var operations = new List<Dictionary<string, object>>();
+        var participants = new List<Dictionary<string, object>>();
+        int totalApprovedPieces = 0;
+        int totalDefectPieces = 0;
+        double totalEarnedCzk = 0;
+        double totalProductiveHours = 0;
+
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+
+            // 1. Zakázka
+            using (var cmd = new SqlCommand(@"
+SELECT o.Id, o.Name, o.IsActive, o.CreatedAt,
+       ISNULL(o.TotalPiecesTarget, ISNULL(o.TargetPieces, 0)) AS TargetPcs,
+       ISNULL(o.EndDate, o.Deadline) AS EndD,
+       o.Description,
+       o.StartDate,
+       ISNULL(o.TargetPricePerPiece, 0) AS TargetPrice
+FROM [Kipacky].[kipa_Orders] o
+WHERE o.Id = @id", conn))
+            {
+                cmd.Parameters.AddWithValue("@id", orderId);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    if (reader.Read())
+                    {
+                        DateTime? endD = reader.IsDBNull(5) ? (DateTime?)null : reader.GetDateTime(5);
+                        DateTime? startD = reader.IsDBNull(7) ? (DateTime?)null : reader.GetDateTime(7);
+                        orderData = new Dictionary<string, object>
+                        {
+                            { "id", reader.GetInt32(0) },
+                            { "name", reader.GetString(1) },
+                            { "isActive", reader.GetBoolean(2) },
+                            { "createdAt", reader.GetDateTime(3).ToString("s") },
+                            { "totalPiecesTarget", reader.GetInt32(4) },
+                            { "targetPieces", reader.GetInt32(4) },
+                            { "endDate", endD.HasValue ? endD.Value.ToString("yyyy-MM-dd") : null },
+                            { "startDate", startD.HasValue ? startD.Value.ToString("yyyy-MM-dd") : null },
+                            { "description", reader.IsDBNull(6) ? "" : reader.GetString(6) },
+                            { "targetPricePerPiece", Convert.ToDouble(reader.GetDecimal(8)) }
+                        };
+                    }
+                }
+            }
+
+            if (orderData == null)
+            {
+                SendError(context, 404, "Zak\u00E1zka nenalezena.");
+                return;
+            }
+
+            // 2. Operace patřící k zakázce
+            using (var cmd = new SqlCommand(@"
+SELECT Id, Name, NormPerHour, RatePerPiece, IsActive, OrderId
+FROM [Kipacky].[kipa_Operations]
+WHERE OrderId = @id
+ORDER BY IsActive DESC, Name ASC", conn))
+            {
+                cmd.Parameters.AddWithValue("@id", orderId);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        operations.Add(new Dictionary<string, object>
+                        {
+                            { "id", reader.GetInt32(0) },
+                            { "name", reader.GetString(1) },
+                            { "normPerHour", reader.GetInt32(2) },
+                            { "ratePerPiece", Convert.ToDouble(reader.GetDecimal(3)) },
+                            { "isActive", reader.GetBoolean(4) },
+                            { "orderId", reader.IsDBNull(5) ? (int?)null : reader.GetInt32(5) }
+                        });
+                    }
+                }
+            }
+
+            // 3. Soupis účastníků a agregovaná schválená produkce
+            using (var cmd = new SqlCommand(@"
+SELECT p.EmployeeId, e.FullName, e.ContractType,
+       p.OperationId, op.Name AS OperationName, op.NormPerHour, op.RatePerPiece,
+       SUM(ISNULL(p.ValidatedPieces, p.SubmittedPieces)) AS ApprovedPieces,
+       SUM(p.DefectPieces) AS DefectPieces,
+       SUM(ISNULL(p.ValidatedPieces, p.SubmittedPieces) * op.RatePerPiece) AS TotalEarnedCzk,
+       SUM(CASE WHEN op.NormPerHour > 0 THEN CAST(ISNULL(p.ValidatedPieces, p.SubmittedPieces) AS FLOAT) / op.NormPerHour ELSE 0 END) AS ProductiveHours
+FROM [Kipacky].[kipa_ProductionLogs] p
+JOIN [Kipacky].[kipa_Employees] e ON p.EmployeeId = e.Id
+JOIN [Kipacky].[kipa_Operations] op ON p.OperationId = op.Id
+WHERE p.OrderId = @id AND p.[Status] = 'Approved'
+GROUP BY p.EmployeeId, e.FullName, e.ContractType, p.OperationId, op.Name, op.NormPerHour, op.RatePerPiece
+ORDER BY e.FullName ASC, op.Name ASC", conn))
+            {
+                cmd.Parameters.AddWithValue("@id", orderId);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        int appPcs = Convert.ToInt32(reader.GetValue(7));
+                        int defPcs = Convert.ToInt32(reader.GetValue(8));
+                        double earned = Convert.ToDouble(reader.GetValue(9));
+                        double prodH = Convert.ToDouble(reader.GetValue(10));
+
+                        totalApprovedPieces += appPcs;
+                        totalDefectPieces += defPcs;
+                        totalEarnedCzk += earned;
+                        totalProductiveHours += prodH;
+
+                        participants.Add(new Dictionary<string, object>
+                        {
+                            { "employeeId", reader.GetInt32(0) },
+                            { "employeeName", reader.GetString(1) },
+                            { "contractType", reader.GetString(2) },
+                            { "operationId", reader.GetInt32(3) },
+                            { "operationName", reader.GetString(4) },
+                            { "normPerHour", reader.GetInt32(5) },
+                            { "ratePerPiece", Convert.ToDouble(reader.GetDecimal(6)) },
+                            { "approvedPieces", appPcs },
+                            { "defectPieces", defPcs },
+                            { "totalEarnedCzk", Math.Round(earned, 2) },
+                            { "productiveHours", Math.Round(prodH, 2) }
+                        });
+                    }
+                }
+            }
+        }
+
+        int target = Convert.ToInt32(orderData["totalPiecesTarget"]);
+        orderData["completedPieces"] = totalApprovedPieces;
+        orderData["remainingPieces"] = (target > 0 && target > totalApprovedPieces) ? (target - totalApprovedPieces) : 0;
+        orderData["percentDone"] = (target > 0) ? Math.Min(100, Math.Round(((double)totalApprovedPieces / target) * 100, 1)) : 0;
+
+        var result = new Dictionary<string, object>
+        {
+            { "order", orderData },
+            { "operations", operations },
+            { "participants", participants },
+            { "stats", new Dictionary<string, object>
+                {
+                    { "totalPiecesTarget", target },
+                    { "completedPieces", totalApprovedPieces },
+                    { "defectPieces", totalDefectPieces },
+                    { "remainingPieces", (target > 0 && target > totalApprovedPieces) ? (target - totalApprovedPieces) : 0 },
+                    { "percentDone", (target > 0) ? Math.Min(100, Math.Round(((double)totalApprovedPieces / target) * 100, 1)) : 0 },
+                    { "totalEarnedCzk", Math.Round(totalEarnedCzk, 2) },
+                    { "totalProductiveHours", Math.Round(totalProductiveHours, 2) }
+                }
+            }
+        };
+
+        SendJson(context, result);
     }
 
     private void HandleGetOperations(HttpContext context)
     {
+        string orderIdStr = context.Request.QueryString["orderId"];
         var list = new List<Dictionary<string, object>>();
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
-            using (var cmd = new SqlCommand("SELECT Id, Name, NormPerHour, RatePerPiece, IsActive FROM [Kipacky].[kipa_Operations] ORDER BY IsActive DESC, Name ASC", conn))
+            string sql = @"
+SELECT op.Id, op.Name, op.NormPerHour, op.RatePerPiece, op.IsActive, op.OrderId, o.Name AS OrderName
+FROM [Kipacky].[kipa_Operations] op
+LEFT JOIN [Kipacky].[kipa_Orders] o ON op.OrderId = o.Id
+WHERE 1=1 ";
+            if (!string.IsNullOrEmpty(orderIdStr))
             {
+                sql += " AND op.OrderId = @orderId ";
+            }
+            sql += " ORDER BY op.IsActive DESC, op.Name ASC";
+
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                if (!string.IsNullOrEmpty(orderIdStr))
+                {
+                    cmd.Parameters.AddWithValue("@orderId", Convert.ToInt32(orderIdStr));
+                }
                 using (var reader = cmd.ExecuteReader())
                 {
                     while (reader.Read())
@@ -1698,7 +1992,9 @@ VALUES (@n, @a, @tp, @dl, @ds)", conn))
                             { "name", reader.GetString(1) },
                             { "normPerHour", reader.GetInt32(2) },
                             { "ratePerPiece", Convert.ToDouble(reader.GetDecimal(3)) },
-                            { "isActive", reader.GetBoolean(4) }
+                            { "isActive", reader.GetBoolean(4) },
+                            { "orderId", reader.IsDBNull(5) ? (int?)null : reader.GetInt32(5) },
+                            { "orderName", reader.IsDBNull(6) ? "" : reader.GetString(6) }
                         });
                     }
                 }
@@ -1715,6 +2011,8 @@ VALUES (@n, @a, @tp, @dl, @ds)", conn))
         int norm = data.ContainsKey("normPerHour") ? Convert.ToInt32(data["normPerHour"]) : 100;
         decimal rate = data.ContainsKey("ratePerPiece") ? Convert.ToDecimal(data["ratePerPiece"], CultureInfo.InvariantCulture) : 1.35m;
         bool isActive = data.ContainsKey("isActive") ? Convert.ToBoolean(data["isActive"]) : true;
+        int? orderId = (data.ContainsKey("orderId") && data["orderId"] != null && !string.IsNullOrEmpty(Convert.ToString(data["orderId"])) && Convert.ToInt32(data["orderId"]) > 0)
+            ? Convert.ToInt32(data["orderId"]) : (int?)null;
 
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -1727,24 +2025,26 @@ VALUES (@n, @a, @tp, @dl, @ds)", conn))
             conn.Open();
             if (id > 0)
             {
-                using (var cmd = new SqlCommand("UPDATE [Kipacky].[kipa_Operations] SET Name = @n, NormPerHour = @norm, RatePerPiece = @rate, IsActive = @a WHERE Id = @id", conn))
+                using (var cmd = new SqlCommand("UPDATE [Kipacky].[kipa_Operations] SET Name = @n, NormPerHour = @norm, RatePerPiece = @rate, IsActive = @a, OrderId = @ord WHERE Id = @id", conn))
                 {
                     cmd.Parameters.AddWithValue("@n", name);
                     cmd.Parameters.AddWithValue("@norm", norm);
                     cmd.Parameters.AddWithValue("@rate", rate);
                     cmd.Parameters.AddWithValue("@a", isActive);
+                    cmd.Parameters.AddWithValue("@ord", orderId.HasValue ? (object)orderId.Value : DBNull.Value);
                     cmd.Parameters.AddWithValue("@id", id);
                     cmd.ExecuteNonQuery();
                 }
             }
             else
             {
-                using (var cmd = new SqlCommand("INSERT INTO [Kipacky].[kipa_Operations] (Name, NormPerHour, RatePerPiece, IsActive) VALUES (@n, @norm, @rate, @a)", conn))
+                using (var cmd = new SqlCommand("INSERT INTO [Kipacky].[kipa_Operations] (Name, NormPerHour, RatePerPiece, IsActive, OrderId) VALUES (@n, @norm, @rate, @a, @ord)", conn))
                 {
                     cmd.Parameters.AddWithValue("@n", name);
                     cmd.Parameters.AddWithValue("@norm", norm);
                     cmd.Parameters.AddWithValue("@rate", rate);
                     cmd.Parameters.AddWithValue("@a", isActive);
+                    cmd.Parameters.AddWithValue("@ord", orderId.HasValue ? (object)orderId.Value : DBNull.Value);
                     cmd.ExecuteNonQuery();
                 }
             }
@@ -2161,7 +2461,7 @@ VALUES (@dt, @st, @et, @emp, @ord, @note)", conn))
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
-            string empSql = "SELECT Id, FullName, ContractType FROM [Kipacky].[kipa_Employees] WHERE 1=1 ";
+            string empSql = "SELECT Id, FullName, ContractType, ISNULL(SelfScheduled, 0) AS SelfScheduled FROM [Kipacky].[kipa_Employees] WHERE 1=1 ";
             if (!string.IsNullOrEmpty(filterEmpId)) empSql += " AND Id = @empId ";
             empSql += " ORDER BY FullName";
 
@@ -2176,7 +2476,8 @@ VALUES (@dt, @st, @et, @emp, @ord, @note)", conn))
                         {
                             { "id", reader.GetInt32(0) },
                             { "name", reader.GetString(1) },
-                            { "contract", reader.GetString(2) }
+                            { "contract", reader.GetString(2) },
+                            { "selfScheduled", reader.GetBoolean(3) }
                         });
                     }
                 }
@@ -2209,7 +2510,7 @@ ORDER BY Timestamp ASC";
                 }
             }
 
-            // Docházka za celý rok (pro výpočet limitu 300h u DPP)
+            // Docházka za celý rok (pro výpočet limitu 300h u DPP - fyzické hodiny)
             string yLogSql = @"
 SELECT EmployeeId, Timestamp, EventType
 FROM [Kipacky].[kipa_AttendanceLogs]
@@ -2230,6 +2531,28 @@ ORDER BY Timestamp ASC";
                             { "ts", reader.GetDateTime(1) },
                             { "event", reader.GetString(2) }
                         });
+                    }
+                }
+            }
+
+            // Produkce za celý rok pro výpočet limitu 300h u DPP (Normočas)
+            var ytdNormHoursMap = new Dictionary<int, double>();
+            string ytdProdSql = @"
+SELECT p.EmployeeId,
+       SUM(CASE WHEN op.NormPerHour > 0 THEN CAST(ISNULL(p.ValidatedPieces, p.SubmittedPieces) AS FLOAT) / op.NormPerHour ELSE 0 END) AS YtdNorm
+FROM [Kipacky].[kipa_ProductionLogs] p
+JOIN [Kipacky].[kipa_Operations] op ON p.OperationId = op.Id
+WHERE p.[Date] >= @yStart AND p.[Date] < @yEnd AND p.[Status] = 'Approved'
+GROUP BY p.EmployeeId";
+            using (var cmd = new SqlCommand(ytdProdSql, conn))
+            {
+                cmd.Parameters.AddWithValue("@yStart", yearStart);
+                cmd.Parameters.AddWithValue("@yEnd", yearEnd);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        ytdNormHoursMap[reader.GetInt32(0)] = Convert.ToDouble(reader.GetValue(1));
                     }
                 }
             }
@@ -2275,7 +2598,7 @@ ORDER BY p.[Date] ASC";
         if (asCsv)
         {
             csvSb.Append('\uFEFF');
-            csvSb.AppendLine("Jm\u00E9no zam\u011Bstnance;\u00DAvazek;Datum;P\u0159\u00EDchod;Odchod;Hrub\u00FD \u010Das (hod:min);Z\u00E1konn\u00E1 p\u0159est\u00E1vka (min);\u010Cist\u00FD \u010Das (hod:min);\u010Cist\u00FD \u010Das (h);Schv\u00E1leno kus\u016F;Zmetky (ks);Produktivn\u00ED \u010Das dle normy (h);Vyd\u011Blan\u00E1 \u010D\u00E1stka (K\u010D);Pozn\u00E1mka");
+            csvSb.AppendLine("Jm\u00E9no zam\u011Bstnance;\u00DAvazek;Samorozvrhov\u00E1n\u00ED;Datum;P\u0159\u00EDchod;Odchod;Hrub\u00FD \u010Das (hod:min);Z\u00E1konn\u00E1 p\u0159est\u00E1vka (min);\u010Cist\u00FD \u010Das (hod:min);\u010Cist\u00FD \u010Das (h);V\u00EDkendov\u00E9 hodiny (h);Schv\u00E1leno kus\u016F;Zmetky (ks);Normo\u010Das (h);Vyd\u011Blan\u00E1 \u010D\u00E1stka (K\u010D);Pozn\u00E1mka");
         }
 
         foreach (var emp in employees)
@@ -2283,6 +2606,8 @@ ORDER BY p.[Date] ASC";
             int eId = Convert.ToInt32(emp["id"]);
             string eName = Convert.ToString(emp["name"]);
             string eContract = Convert.ToString(emp["contract"]);
+            bool eSelfScheduled = emp.ContainsKey("selfScheduled") && Convert.ToBoolean(emp["selfScheduled"]);
+            double ytdNormHours = ytdNormHoursMap.ContainsKey(eId) ? ytdNormHoursMap[eId] : 0.0;
 
             var empLogs = new List<Dictionary<string, object>>();
             foreach (var l in logs)
@@ -2413,12 +2738,18 @@ ORDER BY p.[Date] ASC";
             double totalGross = 0;
             double totalBreak = 0;
             double totalNet = 0;
+            double totalWeekendHours = 0;
             int incompleteCount = 0;
             int completeCount = 0;
 
             foreach (var s in shifts)
             {
                 DateTime shiftDay = DateTime.Parse(Convert.ToString(s["clockInTime"])).Date;
+                bool isWeekend = (shiftDay.DayOfWeek == DayOfWeek.Saturday || shiftDay.DayOfWeek == DayOfWeek.Sunday);
+                bool eligibleWeekend = !eSelfScheduled && isWeekend;
+                s["isWeekend"] = isWeekend;
+                s["eligibleWeekendOvertime"] = eligibleWeekend;
+
                 int dayApprovedPcs = 0;
                 int dayDefectPcs = 0;
                 double dayProdHours = 0;
@@ -2444,18 +2775,25 @@ ORDER BY p.[Date] ASC";
                 s["approvedPieces"] = dayApprovedPcs;
                 s["defectPieces"] = dayDefectPcs;
                 s["productiveHours"] = Math.Round(dayProdHours, 2);
+                s["normHours"] = Math.Round(dayProdHours, 2);
                 s["earnedCzk"] = Math.Round(dayEarnedCzk, 2);
 
                 if ((bool)s["isIncomplete"])
                 {
+                    s["weekendHours"] = 0.0;
                     incompleteCount++;
                 }
                 else
                 {
                     completeCount++;
+                    double netH = (double)s["netHours"];
                     totalGross += (double)s["grossHours"];
                     totalBreak += (double)s["breakHours"];
-                    totalNet += (double)s["netHours"];
+                    totalNet += netH;
+
+                    double wH = eligibleWeekend ? netH : 0.0;
+                    s["weekendHours"] = Math.Round(wH, 2);
+                    totalWeekendHours += wH;
                 }
             }
 
@@ -2493,16 +2831,21 @@ ORDER BY p.[Date] ASC";
                 { "employeeId", eId },
                 { "employeeName", eName },
                 { "contractType", eContract },
+                { "selfScheduled", eSelfScheduled },
                 { "totalShifts", completeCount },
                 { "totalGrossHours", Math.Round(totalGross, 2) },
                 { "totalBreakHours", Math.Round(totalBreak, 2) },
                 { "totalNetHours", Math.Round(totalNet, 2) },
+                { "totalWeekendHours", Math.Round(totalWeekendHours, 2) },
                 { "incompleteShiftsCount", incompleteCount },
                 { "yearToDateNetHours", Math.Round(ytdNetHours, 2) },
                 { "totalApprovedPieces", totalApprovedPieces },
                 { "totalPendingPieces", totalPendingPieces },
                 { "totalDefectPieces", totalDefectPieces },
                 { "totalProductiveHours", Math.Round(totalProductiveHours, 2) },
+                { "normHours", Math.Round(totalProductiveHours, 2) },
+                { "yearToDateNormHours", Math.Round(ytdNormHours, 2) },
+                { "remainingDppHours", Math.Max(0, 300 - Math.Round(ytdNormHours, 2)) },
                 { "totalEarnedCzk", Math.Round(totalEarnedCzk, 2) },
                 { "shifts", shifts }
             });
@@ -2518,14 +2861,16 @@ ORDER BY p.[Date] ASC";
                     int breakMin = (int)(TimeSpan.Parse(Convert.ToString(s["breakDuration"])).TotalMinutes);
                     string netStr = Convert.ToString(s["netDuration"]).Substring(0, 5);
                     double netH = Math.Round((double)s["netHours"], 2);
+                    double wH = Convert.ToDouble(s["weekendHours"]);
                     int appPcs = Convert.ToInt32(s["approvedPieces"]);
                     int defPcs = Convert.ToInt32(s["defectPieces"]);
                     double prodH = Convert.ToDouble(s["productiveHours"]);
                     double earnCzk = Convert.ToDouble(s["earnedCzk"]);
 
-                    csvSb.AppendLine(string.Format("{0};{1};{2};{3};{4};{5};{6};{7};{8};{9};{10};{11};{12};{13}",
-                        EscapeCsv(eName), EscapeCsv(eContract), dt.ToString("dd.MM.yyyy"), inStr, outStr,
+                    csvSb.AppendLine(string.Format("{0};{1};{2};{3};{4};{5};{6};{7};{8};{9};{10};{11};{12};{13};{14};{15}",
+                        EscapeCsv(eName), EscapeCsv(eContract), eSelfScheduled ? "ANO" : "NE", dt.ToString("dd.MM.yyyy"), inStr, outStr,
                         grossStr, breakMin, netStr, netH.ToString("F2", CultureInfo.InvariantCulture),
+                        wH.ToString("F2", CultureInfo.InvariantCulture),
                         appPcs, defPcs, prodH.ToString("F2", CultureInfo.InvariantCulture),
                         earnCzk.ToString("F2", CultureInfo.InvariantCulture),
                         EscapeCsv(Convert.ToString(s["note"]))));
@@ -2533,14 +2878,17 @@ ORDER BY p.[Date] ASC";
 
                 string totGrossStr = FormatTimeSpan(TimeSpan.FromHours(totalGross)).Substring(0, 5);
                 string totNetStr = FormatTimeSpan(TimeSpan.FromHours(totalNet)).Substring(0, 5);
-                csvSb.AppendLine(string.Format("CELKEM {0};{1};;--;--;{2};{3};{4};{5};{6};{7};{8};{9};Po\u010Det sm\u011Bn: {10} | Ro\u010Dn\u011B YTD: {11} h",
-                    EscapeCsv(eName), EscapeCsv(eContract), totGrossStr, (int)(totalBreak * 60), totNetStr,
+                csvSb.AppendLine(string.Format("CELKEM {0};{1};{2};;--;--;{3};{4};{5};{6};{7};{8};{9};{10};{11};Po\u010Det sm\u011Bn: {12} | Normo\u010Das: {10} h | YTD Normo\u010Das: {13} h | Zb\u00FDv\u00E1 z 300h DPP: {14} h",
+                    EscapeCsv(eName), EscapeCsv(eContract), eSelfScheduled ? "ANO" : "NE",
+                    totGrossStr, (int)(totalBreak * 60), totNetStr,
                     totalNet.ToString("F2", CultureInfo.InvariantCulture),
+                    totalWeekendHours.ToString("F2", CultureInfo.InvariantCulture),
                     totalApprovedPieces, totalDefectPieces,
                     totalProductiveHours.ToString("F2", CultureInfo.InvariantCulture),
                     totalEarnedCzk.ToString("F2", CultureInfo.InvariantCulture),
-                    completeCount, Math.Round(ytdNetHours, 1).ToString(CultureInfo.InvariantCulture)));
-                csvSb.AppendLine(";;;;;;;;;;;;;");
+                    completeCount, Math.Round(ytdNormHours, 1).ToString(CultureInfo.InvariantCulture),
+                    Math.Max(0, 300 - Math.Round(ytdNormHours, 1)).ToString(CultureInfo.InvariantCulture)));
+                csvSb.AppendLine(";;;;;;;;;;;;;;;");
             }
         }
 

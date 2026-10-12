@@ -54,6 +54,7 @@ import {
   fetchShifts,
   saveShift,
   deleteShift,
+  fetchOrderDetail,
 } from '../api/client';
 import {
   Employee,
@@ -66,6 +67,7 @@ import {
   DocumentItem,
   DocumentConsentItem,
   PlannedShiftItem,
+  OrderDetailResult,
 } from '../types';
 import { GREENBERG_LOGO } from '../assets/logoBase64';
 import { APP_VERSION } from '../version';
@@ -91,6 +93,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
   const [newPhone, setNewPhone] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newBankAccount, setNewBankAccount] = useState('');
+  const [newContractStartDate, setNewContractStartDate] = useState('');
+  const [newContractEndDate, setNewContractEndDate] = useState('');
+  const [newSelfScheduled, setNewSelfScheduled] = useState(false);
   const [editingEmp, setEditingEmp] = useState<Employee | null>(null);
 
   // QR kód
@@ -125,6 +130,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
   const [loadingProduction, setLoadingProduction] = useState(false);
   const [prodFilterStatus, setProdFilterStatus] = useState<string>('');
 
+  // Detail zakázky (modal + tiskový arch)
+  const [selectedOrderDetail, setSelectedOrderDetail] = useState<OrderDetailResult | null>(null);
+  const [loadingOrderDetail, setLoadingOrderDetail] = useState(false);
+
   // Lokální editační stav pro schvalování kusů a zmetků v tabulce
   const [prodEdits, setProdEdits] = useState<
     Record<number, { validated: number; defects: number }>
@@ -138,6 +147,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
   const [editingOrder, setEditingOrder] = useState<OrderItem | null>(null);
 
   const [newOpName, setNewOpName] = useState('');
+  const [newOpOrderId, setNewOpOrderId] = useState<string>('');
   const [newOpNorm, setNewOpNorm] = useState('100');
   const [newOpRate, setNewOpRate] = useState('1.35');
   const [editingOp, setEditingOp] = useState<OperationItem | null>(null);
@@ -357,6 +367,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
         phone: newPhone.trim() || undefined,
         email: newEmail.trim() || undefined,
         bankAccount: newBankAccount.trim() || undefined,
+        contractStartDate: newContractStartDate || undefined,
+        contractEndDate: newContractEndDate || undefined,
+        selfScheduled: newSelfScheduled,
       });
       setNewFullName('');
       setNewPinCode('');
@@ -364,6 +377,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
       setNewPhone('');
       setNewEmail('');
       setNewBankAccount('');
+      setNewContractStartDate('');
+      setNewContractEndDate('');
+      setNewSelfScheduled(false);
       showAlert('success', 'Zaměstnanec byl úspěšně přidán.');
       loadEmployees();
     } catch (err: any) {
@@ -393,6 +409,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
         phone: emp.phone?.trim() || undefined,
         email: emp.email?.trim() || undefined,
         bankAccount: emp.bankAccount?.trim() || undefined,
+        contractStartDate: emp.contractStartDate || undefined,
+        contractEndDate: emp.contractEndDate || undefined,
+        selfScheduled: emp.selfScheduled || false,
       });
       setEditingEmp(null);
       showAlert('success', 'Zaměstnanec byl upraven.');
@@ -558,6 +577,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
     }
   };
 
+  const handleOpenOrderDetail = async (orderId: number) => {
+    setLoadingOrderDetail(true);
+    try {
+      const data = await fetchOrderDetail(orderId);
+      setSelectedOrderDetail(data);
+    } catch (err: any) {
+      showAlert('error', err.message || 'Nepodařilo se načíst detail zakázky.');
+    } finally {
+      setLoadingOrderDetail(false);
+    }
+  };
+
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newOrderName.trim()) return;
@@ -620,6 +651,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
     try {
       await saveOperation({
         name: newOpName.trim(),
+        orderId: newOpOrderId ? parseInt(newOpOrderId, 10) : null,
         normPerHour: parseInt(newOpNorm) || 100,
         ratePerPiece: parseFloat(newOpRate.replace(',', '.')) || 1.35,
         isActive: true,
@@ -637,6 +669,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
       await saveOperation({
         id: op.id,
         name: op.name,
+        orderId: op.orderId ?? null,
         normPerHour: op.normPerHour,
         ratePerPiece: op.ratePerPiece,
         isActive: op.isActive ?? true,
@@ -1180,6 +1213,39 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                         />
                       </div>
                     </div>
+
+                    {/* Fáze 2.4: Smlouva a samorozvrhování */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-[#E4DDD0] items-center">
+                      <div>
+                        <label className="block text-[11px] text-[#4E6157] mb-0.5">Začátek smlouvy</label>
+                        <input
+                          type="date"
+                          value={newContractStartDate}
+                          onChange={(e) => setNewContractStartDate(e.target.value)}
+                          className="w-full px-3 py-1.5 bg-white border border-[#D6DCD3] rounded-xl text-[#232B28] text-xs focus:outline-none focus:ring-2 focus:ring-sky-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-[#4E6157] mb-0.5">Konec smlouvy</label>
+                        <input
+                          type="date"
+                          value={newContractEndDate}
+                          onChange={(e) => setNewContractEndDate(e.target.value)}
+                          className="w-full px-3 py-1.5 bg-white border border-[#D6DCD3] rounded-xl text-[#232B28] text-xs focus:outline-none focus:ring-2 focus:ring-sky-500"
+                        />
+                      </div>
+                      <div className="pt-4">
+                        <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-[#232B28] font-medium">
+                          <input
+                            type="checkbox"
+                            checked={newSelfScheduled}
+                            onChange={(e) => setNewSelfScheduled(e.target.checked)}
+                            className="rounded border-[#D6DCD3] text-[#193F34] focus:ring-0"
+                          />
+                          <span>Samorozvrhování (bez příplatků za víkendy)</span>
+                        </label>
+                      </div>
+                    </div>
                   </form>
                 </div>
               );
@@ -1293,7 +1359,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                                   onChange={(e) =>
                                     setEditingEmp({ ...editingEmp, bankAccount: e.target.value })
                                   }
-                                  className="px-2 py-1 bg-[#F7F3E9] border border-[#D6DCD3] rounded text-xs text-white font-mono w-full"
+                                  className="px-2 py-1 bg-[#F7F3E9] border border-[#D6DCD3] rounded text-xs text-[#232B28] font-mono w-full"
                                 />
                                 <div className="grid grid-cols-2 gap-1">
                                   <input
@@ -1303,7 +1369,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                                     onChange={(e) =>
                                       setEditingEmp({ ...editingEmp, phone: e.target.value })
                                     }
-                                    className="px-2 py-0.5 bg-[#F7F3E9] border border-[#D6DCD3] rounded text-[11px] text-white w-full"
+                                    className="px-2 py-0.5 bg-[#F7F3E9] border border-[#D6DCD3] rounded text-[11px] text-[#232B28] w-full"
                                   />
                                   <input
                                     type="email"
@@ -1312,9 +1378,44 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                                     onChange={(e) =>
                                       setEditingEmp({ ...editingEmp, email: e.target.value })
                                     }
-                                    className="px-2 py-0.5 bg-[#F7F3E9] border border-[#D6DCD3] rounded text-[11px] text-white w-full"
+                                    className="px-2 py-0.5 bg-[#F7F3E9] border border-[#D6DCD3] rounded text-[11px] text-[#232B28] w-full"
                                   />
                                 </div>
+                                <div className="grid grid-cols-2 gap-1 pt-1">
+                                  <div>
+                                    <label className="text-[10px] text-[#4E6157] block">Smlouva od:</label>
+                                    <input
+                                      type="date"
+                                      value={editingEmp.contractStartDate || ''}
+                                      onChange={(e) =>
+                                        setEditingEmp({ ...editingEmp, contractStartDate: e.target.value })
+                                      }
+                                      className="px-1.5 py-0.5 bg-[#F7F3E9] border border-[#D6DCD3] rounded text-[11px] text-[#232B28] w-full"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] text-[#4E6157] block">Smlouva do:</label>
+                                    <input
+                                      type="date"
+                                      value={editingEmp.contractEndDate || ''}
+                                      onChange={(e) =>
+                                        setEditingEmp({ ...editingEmp, contractEndDate: e.target.value })
+                                      }
+                                      className="px-1.5 py-0.5 bg-[#F7F3E9] border border-[#D6DCD3] rounded text-[11px] text-[#232B28] w-full"
+                                    />
+                                  </div>
+                                </div>
+                                <label className="inline-flex items-center gap-1.5 pt-1 text-[11px] text-[#232B28] cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={editingEmp.selfScheduled || false}
+                                    onChange={(e) =>
+                                      setEditingEmp({ ...editingEmp, selfScheduled: e.target.checked })
+                                    }
+                                    className="rounded border-[#D6DCD3] text-[#193F34]"
+                                  />
+                                  <span>Samorozvrhování</span>
+                                </label>
                               </div>
                             ) : (
                               <div>
@@ -1337,6 +1438,22 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                                     {emp.phone && <span>{emp.phone}</span>}
                                     {emp.phone && emp.email && <span> • </span>}
                                     {emp.email && <span>{emp.email}</span>}
+                                  </div>
+                                )}
+                                {(emp.contractStartDate || emp.contractEndDate || emp.selfScheduled) && (
+                                  <div className="text-[10px] text-[#4E6157] mt-1 space-x-1.5">
+                                    {(emp.contractStartDate || emp.contractEndDate) && (
+                                      <span>
+                                        📅 {emp.contractStartDate ? new Date(emp.contractStartDate).toLocaleDateString('cs-CZ') : '...'}
+                                        {' – '}
+                                        {emp.contractEndDate ? new Date(emp.contractEndDate).toLocaleDateString('cs-CZ') : 'neurčito'}
+                                      </span>
+                                    )}
+                                    {emp.selfScheduled && (
+                                      <span className="px-1.5 py-0.2 rounded bg-sky-100 text-sky-800 font-semibold border border-sky-300">
+                                        Samorozvrh.
+                                      </span>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -1949,6 +2066,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                               <div className="flex items-center gap-1.5">
                                 <button
                                   type="button"
+                                  onClick={() => handleOpenOrderDetail(ord.id)}
+                                  className="px-2.5 py-1 bg-[#193F34] hover:bg-[#285446] text-[#F7F3E9] rounded-lg text-xs font-heading font-semibold flex items-center gap-1 cursor-pointer transition-all shadow-sm"
+                                  title="Zobrazit přehled plnění zakázky a účastníků"
+                                >
+                                  <FileText className="w-3.5 h-3.5 text-[#D7BE97]" />
+                                  <span>Detail</span>
+                                </button>
+                                <button
+                                  type="button"
                                   onClick={() => setEditingOrder(ord)}
                                   className="p-1 text-[#4E6157] hover:text-white rounded-lg hover:bg-[#E9E1D2] cursor-pointer"
                                   title="Upravit zakázku"
@@ -2005,39 +2131,54 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                   Operace, hodinové normy a sazby
                 </h3>
 
-                <form onSubmit={handleCreateOperation} className="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-4">
-                  <input
-                    type="text"
-                    required
-                    placeholder="Název operace"
-                    value={newOpName}
-                    onChange={(e) => setNewOpName(e.target.value)}
-                    className="sm:col-span-2 px-3 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-white placeholder-[#8B9B90]"
-                  />
-                  <input
-                    type="number"
-                    required
-                    placeholder="Norma ks/h"
-                    value={newOpNorm}
-                    onChange={(e) => setNewOpNorm(e.target.value)}
-                    className="px-3 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-white font-mono"
-                    title="Norma kusů za 1 hodinu"
-                  />
-                  <div className="flex gap-1.5">
+                <form onSubmit={handleCreateOperation} className="space-y-2 mb-4 bg-[#F7F3E9]/60 p-3 rounded-xl border border-[#E4DDD0]">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      required
+                      placeholder="Název operace"
+                      value={newOpName}
+                      onChange={(e) => setNewOpName(e.target.value)}
+                      className="px-3 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-[#232B28] placeholder-[#8B9B90]"
+                    />
+                    <select
+                      value={newOpOrderId}
+                      onChange={(e) => setNewOpOrderId(e.target.value)}
+                      className="px-3 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-[#232B28]"
+                    >
+                      <option value="">-- Společná pro všechny zakázky --</option>
+                      {orders.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          Zakázka: {o.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <input
+                      type="number"
+                      required
+                      placeholder="Norma ks/h"
+                      value={newOpNorm}
+                      onChange={(e) => setNewOpNorm(e.target.value)}
+                      className="px-3 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-[#232B28] font-mono"
+                      title="Norma kusů za 1 hodinu"
+                    />
                     <input
                       type="text"
                       required
                       placeholder="Kč/ks"
                       value={newOpRate}
                       onChange={(e) => setNewOpRate(e.target.value)}
-                      className="w-full px-2.5 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-white font-mono"
+                      className="px-3 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-[#232B28] font-mono"
                       title="Sazba v Kč za 1 kus"
                     />
                     <button
                       type="submit"
-                      className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold cursor-pointer"
+                      className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold cursor-pointer flex items-center justify-center gap-1"
                     >
                       <Plus className="w-4 h-4" />
+                      Přidat operaci
                     </button>
                   </div>
                 </form>
@@ -2090,6 +2231,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                           <>
                             <div>
                               <span className="font-semibold font-heading text-[#193F34]">{op.name}</span>
+                              {op.orderName && (
+                                <span className="ml-2 text-[10px] px-2 py-0.5 rounded bg-[#193F34]/10 text-[#193F34] font-bold border border-[#193F34]/20">
+                                  {op.orderName}
+                                </span>
+                              )}
                               <span className="ml-2 text-xs text-[#4E6157] font-mono">
                                 Norma: <strong>{op.normPerHour} ks/h</strong> • Sazba:{' '}
                                 <strong className="text-emerald-400">
@@ -2687,10 +2833,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                                 }`}
                               >
                                 {dppDanger
-                                  ? `⛔ Kritický stav DPP: ${ytd.toFixed(1)} / 300 h`
+                                  ? `⛔ Kritický stav DPP (Normočas): ${ytd.toFixed(1)} / 300 h`
                                   : dppWarning
-                                    ? `⚠️ Blíží se limitu DPP: ${ytd.toFixed(1)} / 300 h`
-                                    : `✓ Limit DPP: ${ytd.toFixed(1)} / 300 h`}
+                                    ? `⚠️ Blíží se limitu DPP (Normočas): ${ytd.toFixed(1)} / 300 h`
+                                    : `✓ Limit DPP (Normočas): ${ytd.toFixed(1)} / 300 h (zbývá ${((empSum.remainingDppHours !== undefined ? empSum.remainingDppHours : Math.max(0, 300 - ytd))).toFixed(1)} h)`}
                               </span>
                             )}
                             {empSum.incompleteShiftsCount > 0 && (
@@ -3505,6 +3651,263 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================== */}
+      {/* MODÁL PRO DETAIL ZAKÁZKY (A4 TISK & PŘEHLED ÚČASTNÍKŮ) */}
+      {/* ==================================================== */}
+      {(selectedOrderDetail || loadingOrderDetail) && (
+        <div className="fixed inset-0 z-50 bg-[#102E26]/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#FFFFFF] border border-[#E4DDD0] rounded-[24px] max-w-4xl w-full p-6 sm:p-8 shadow-2xl relative my-8 text-[#232B28]">
+            <button
+              type="button"
+              onClick={() => setSelectedOrderDetail(null)}
+              className="absolute top-5 right-5 p-2 rounded-full bg-[#F7F3E9] text-[#55645B] hover:text-[#193F34] transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {loadingOrderDetail ? (
+              <div className="py-16 text-center text-[#193F34] font-heading font-bold">
+                Načítám detail zakázky...
+              </div>
+            ) : selectedOrderDetail ? (
+              <div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#E4DDD0]">
+                  <div>
+                    <span className="text-xs px-2.5 py-1 rounded-[6px] bg-[#285446] text-[#D7BE97] font-heading font-bold uppercase tracking-wider">
+                      Zakázka č. {selectedOrderDetail.order.id}
+                    </span>
+                    <h2 className="text-2xl sm:text-3xl font-heading font-extrabold text-[#193F34] mt-2">
+                      {selectedOrderDetail.order.name}
+                    </h2>
+                    {selectedOrderDetail.order.description && (
+                      <p className="text-xs text-[#55645B] mt-1">
+                        {selectedOrderDetail.order.description}
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const win = window.open('', '_blank');
+                      if (!win) return;
+                      const ord = selectedOrderDetail.order;
+                      const st = selectedOrderDetail.stats;
+                      const parts = selectedOrderDetail.participants;
+                      const pct = ord.targetPieces > 0 ? Math.round((st.totalApprovedPieces / ord.targetPieces) * 100) : 0;
+
+                      const rowsHtml = parts.map((p, i) => `
+                        <tr>
+                          <td style="text-align:center;">${i + 1}</td>
+                          <td><strong>${p.fullName}</strong></td>
+                          <td style="text-align:center;">${p.contractType}</td>
+                          <td>${p.operationName}</td>
+                          <td style="text-align:right; font-family:monospace;">${p.normPerHour} ks/h</td>
+                          <td style="text-align:right; font-family:monospace; font-weight:bold; color:#102E26;">${p.approvedPieces} ks</td>
+                          <td style="text-align:right; font-family:monospace; color:#8E4B2F;">${p.defectPieces} ks</td>
+                          <td style="text-align:right; font-family:monospace;">${p.productiveHours.toFixed(2)} h</td>
+                          <td style="text-align:right; font-family:monospace; font-weight:bold;">${p.totalEarnedCzk.toFixed(2)} Kč</td>
+                        </tr>
+                      `).join('');
+
+                      win.document.write(`
+                        <!DOCTYPE html>
+                        <html lang="cs">
+                          <head>
+                            <meta charset="utf-8" />
+                            <title>Výrobní list zakázky – ${ord.name}</title>
+                            <style>
+                              @page { size: A4 portrait; margin: 15mm; }
+                              body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px; color: #111; line-height: 1.4; padding: 10px; }
+                              .header { border-bottom: 2px solid #102E26; padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: flex-end; }
+                              .title { font-size: 20px; font-weight: bold; margin: 0; color: #102E26; }
+                              .subtitle { font-size: 11px; color: #55645B; margin-top: 4px; }
+                              .kpi-row { display: flex; gap: 15px; margin-bottom: 20px; }
+                              .kpi-card { flex: 1; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; background: #f8fafc; text-align: center; }
+                              .kpi-val { font-size: 16px; font-weight: bold; color: #102E26; font-family: monospace; }
+                              .kpi-lbl { font-size: 9px; text-transform: uppercase; color: #64748b; margin-top: 2px; }
+                              table { width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 10.5px; }
+                              th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; }
+                              th { background: #f1f5f9; font-weight: bold; color: #102E26; }
+                              .footer { margin-top: 40px; display: flex; justify-content: space-between; padding-top: 20px; border-top: 1px dashed #94a3b8; }
+                              .sig-box { width: 45%; text-align: center; }
+                              .sig-line { border-bottom: 1px solid #111; margin-top: 40px; margin-bottom: 5px; }
+                            </style>
+                          </head>
+                          <body>
+                            <div class="header">
+                              <div>
+                                <h1 class="title">VÝROBNÍ A ARCHIVAČNÍ LIST ZAKÁZKY</h1>
+                                <div class="subtitle">Greenberg Nepomuk • Zakázka: <strong>${ord.name}</strong></div>
+                              </div>
+                              <div style="text-align:right; font-size:10px; color:#64748b;">
+                                Vygenerováno: ${new Date().toLocaleDateString('cs-CZ')} v ${new Date().toLocaleTimeString('cs-CZ')}<br/>
+                                Stav: ${ord.isActive ? 'Aktivní' : 'Uzavřená'}
+                              </div>
+                            </div>
+
+                            <div class="kpi-row">
+                              <div class="kpi-card">
+                                <div class="kpi-val">${ord.targetPieces || '—'} ks</div>
+                                <div class="kpi-lbl">Cílový plán</div>
+                              </div>
+                              <div class="kpi-card">
+                                <div class="kpi-val">${st.totalApprovedPieces} ks (${pct}%)</div>
+                                <div class="kpi-lbl">Vyrobeno schváleno</div>
+                              </div>
+                              <div class="kpi-card">
+                                <div class="kpi-val" style="color:#8E4B2F;">${st.totalDefectPieces} ks</div>
+                                <div class="kpi-lbl">Zmetky</div>
+                              </div>
+                              <div class="kpi-card">
+                                <div class="kpi-val">${st.totalProductiveHours.toFixed(2)} h</div>
+                                <div class="kpi-lbl">Odpracovaný normočas</div>
+                              </div>
+                              <div class="kpi-card">
+                                <div class="kpi-val">${st.totalEarnedCzk.toFixed(2)} Kč</div>
+                                <div class="kpi-lbl">Mzdové náklady zakázky</div>
+                              </div>
+                            </div>
+
+                            <h3 style="color:#102E26; margin-bottom:8px;">Jmenný přehled účastníků výroby:</h3>
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th style="width:25px; text-align:center;">#</th>
+                                  <th>Pracovník</th>
+                                  <th style="width:50px; text-align:center;">Úvazek</th>
+                                  <th>Operace</th>
+                                  <th style="width:70px; text-align:right;">Norma</th>
+                                  <th style="width:70px; text-align:right;">Schváleno</th>
+                                  <th style="width:60px; text-align:right;">Zmetky</th>
+                                  <th style="width:70px; text-align:right;">Normočas</th>
+                                  <th style="width:80px; text-align:right;">Vyplaceno</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                ${rowsHtml || '<tr><td colspan="9" style="text-align:center; padding:15px; color:#64748b;">Zatím se na zakázce nikdo nepodílel.</td></tr>'}
+                              </tbody>
+                            </table>
+
+                            <div class="footer">
+                              <div class="sig-box">
+                                <div class="sig-line"></div>
+                                <strong>Vedoucí výroby / Zkontroloval</strong><br/>
+                                (Marta Chorobiková)
+                              </div>
+                              <div class="sig-box">
+                                <div class="sig-line"></div>
+                                <strong>Předání / Archivace</strong><br/>
+                                Greenberg Nepomuk
+                              </div>
+                            </div>
+                            <script>window.onload = function() { window.print(); };</script>
+                          </body>
+                        </html>
+                      `);
+                      win.document.close();
+                    }}
+                    className="px-4 py-2.5 rounded-[12px] bg-[#193F34] hover:bg-[#285446] text-[#F7F3E9] font-heading font-bold text-xs flex items-center gap-2 cursor-pointer shadow-md transition-all self-start sm:self-auto"
+                  >
+                    <Printer className="w-4 h-4 text-[#D7BE97]" />
+                    <span>Vytisknout výrobní list (A4)</span>
+                  </button>
+                </div>
+
+                {/* Progress bar plnění zakázky */}
+                <div className="my-6 bg-[#F7F3E9] p-5 rounded-[16px] border border-[#E4DDD0]">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs font-heading font-bold uppercase tracking-wider text-[#55645B]">
+                      Plnění cíle zakázky
+                    </span>
+                    <span className="font-mono font-bold text-sm text-[#193F34]">
+                      {selectedOrderDetail.stats.totalApprovedPieces} / {selectedOrderDetail.order.targetPieces || 0} ks
+                      {' '}({selectedOrderDetail.order.targetPieces > 0 ? Math.round((selectedOrderDetail.stats.totalApprovedPieces / selectedOrderDetail.order.targetPieces) * 100) : 0}%)
+                    </span>
+                  </div>
+                  <div className="w-full bg-[#E4DDD0] rounded-full h-3 overflow-hidden">
+                    <div
+                      className="h-3 rounded-full bg-[#193F34] transition-all duration-500"
+                      style={{
+                        width: `${selectedOrderDetail.order.targetPieces > 0 ? Math.min(100, Math.round((selectedOrderDetail.stats.totalApprovedPieces / selectedOrderDetail.order.targetPieces) * 100)) : 0}%`,
+                      }}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-3 border-t border-[#E4DDD0]/80">
+                    <div>
+                      <span className="text-[10px] text-[#55645B] block uppercase tracking-wider">Zbývá vyrobit</span>
+                      <span className="font-mono font-bold text-sm text-[#193F34]">
+                        {Math.max(0, (selectedOrderDetail.order.targetPieces || 0) - selectedOrderDetail.stats.totalApprovedPieces)} ks
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-[#55645B] block uppercase tracking-wider">Zmetky celkem</span>
+                      <span className="font-mono font-bold text-sm text-[#8E4B2F]">
+                        {selectedOrderDetail.stats.totalDefectPieces} ks
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-[#55645B] block uppercase tracking-wider">Normočas</span>
+                      <span className="font-mono font-bold text-sm text-[#193F34]">
+                        {selectedOrderDetail.stats.totalProductiveHours.toFixed(2)} h
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-[#55645B] block uppercase tracking-wider">Mzdové náklady</span>
+                      <span className="font-mono font-bold text-sm text-[#16634D]">
+                        {selectedOrderDetail.stats.totalEarnedCzk.toFixed(2)} Kč
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Jmenný rozpad brigádníků */}
+                <h3 className="text-sm font-heading font-bold text-[#193F34] uppercase tracking-wider mb-3">
+                  Pracovníci podílející se na zakázce ({selectedOrderDetail.participants.length})
+                </h3>
+                <div className="border border-[#E4DDD0] rounded-[16px] overflow-hidden max-h-72 overflow-y-auto">
+                  <table className="w-full text-left text-xs text-[#232B28]">
+                    <thead className="bg-[#F7F3E9] text-[11px] uppercase font-heading font-bold text-[#55645B] border-b border-[#E4DDD0]">
+                      <tr>
+                        <th className="px-4 py-2.5">Pracovník</th>
+                        <th className="px-4 py-2.5">Úvazek</th>
+                        <th className="px-4 py-2.5">Operace</th>
+                        <th className="px-4 py-2.5 text-right">Schváleno ks</th>
+                        <th className="px-4 py-2.5 text-right">Zmetky</th>
+                        <th className="px-4 py-2.5 text-right">Normočas</th>
+                        <th className="px-4 py-2.5 text-right">Výdělek</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E4DDD0]">
+                      {selectedOrderDetail.participants.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="px-4 py-6 text-center text-[#55645B] italic">
+                            Zatím nebyly nahlášeny žádné schválené kusy pro tuto zakázku.
+                          </td>
+                        </tr>
+                      ) : (
+                        selectedOrderDetail.participants.map((p, idx) => (
+                          <tr key={idx} className="hover:bg-[#F7F3E9]/50">
+                            <td className="px-4 py-2.5 font-bold text-[#193F34]">{p.fullName}</td>
+                            <td className="px-4 py-2.5 text-[#55645B]">{p.contractType}</td>
+                            <td className="px-4 py-2.5">{p.operationName}</td>
+                            <td className="px-4 py-2.5 text-right font-mono font-bold text-[#16634D]">{p.approvedPieces} ks</td>
+                            <td className="px-4 py-2.5 text-right font-mono text-[#8E4B2F]">{p.defectPieces} ks</td>
+                            <td className="px-4 py-2.5 text-right font-mono">{p.productiveHours.toFixed(2)} h</td>
+                            <td className="px-4 py-2.5 text-right font-mono font-bold text-[#193F34]">{p.totalEarnedCzk.toFixed(2)} Kč</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       )}

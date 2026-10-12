@@ -6,6 +6,7 @@ import {
   MonthlyReportResult,
   OrderItem,
   OperationItem,
+  OrderDetailResult,
   ProductionLogItem,
   DocumentItem,
   DocumentConsentItem,
@@ -170,6 +171,23 @@ export async function adminLogin(username: string, password: string): Promise<{ 
   return data;
 }
 
+export async function adminPinLogin(pin: string): Promise<{ success: boolean; username: string }> {
+  const res = await fetch(`${API_BASE}?action=admin-pin-login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pin }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Neplatný administrátorský PIN');
+  }
+  const data = await res.json();
+  if (data.token) {
+    localStorage.setItem('kipacky_token', data.token);
+  }
+  return data;
+}
+
 export async function adminLogout(): Promise<void> {
   localStorage.removeItem('kipacky_token');
   await fetch(`${API_BASE}?action=logout`, { method: 'POST', headers: getAuthHeaders() }).catch(() => {});
@@ -268,6 +286,9 @@ export async function createEmployee(data: {
   phone?: string;
   email?: string;
   bankAccount?: string;
+  contractStartDate?: string;
+  contractEndDate?: string;
+  selfScheduled?: boolean;
 }): Promise<Employee> {
   const res = await fetch(`${API_BASE}?action=create-employee`, {
     method: 'POST',
@@ -291,6 +312,9 @@ export async function updateEmployee(
     phone?: string;
     email?: string;
     bankAccount?: string;
+    contractStartDate?: string;
+    contractEndDate?: string;
+    selfScheduled?: boolean;
   }
 ): Promise<Employee> {
   const res = await fetch(`${API_BASE}?action=update-employee&id=${id}`, {
@@ -380,12 +404,24 @@ export async function fetchOrders(): Promise<OrderItem[]> {
   return res.json();
 }
 
+export async function fetchOrderDetail(orderId: number): Promise<OrderDetailResult> {
+  const res = await fetch(`${API_BASE}?action=get-order-detail&orderId=${orderId}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Chyba při načítání detailu zakázky');
+  return res.json();
+}
+
 export async function saveOrder(data: {
   id?: number;
   name: string;
   isActive: boolean;
+  totalPiecesTarget?: number;
   targetPieces?: number;
+  startDate?: string;
+  endDate?: string;
   deadline?: string;
+  targetPricePerPiece?: number;
   description?: string;
 }): Promise<void> {
   const res = await fetch(`${API_BASE}?action=save-order`, {
@@ -399,8 +435,10 @@ export async function saveOrder(data: {
   }
 }
 
-export async function fetchOperations(): Promise<OperationItem[]> {
-  const res = await fetch(`${API_BASE}?action=get-operations`, {
+export async function fetchOperations(orderId?: number): Promise<OperationItem[]> {
+  const query = new URLSearchParams({ action: 'get-operations' });
+  if (orderId) query.append('orderId', orderId.toString());
+  const res = await fetch(`${API_BASE}?${query.toString()}`, {
     headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error('Chyba při načítání operací');
@@ -413,6 +451,7 @@ export async function saveOperation(data: {
   normPerHour: number;
   ratePerPiece: number;
   isActive: boolean;
+  orderId?: number | null;
 }): Promise<void> {
   const res = await fetch(`${API_BASE}?action=save-operation`, {
     method: 'POST',

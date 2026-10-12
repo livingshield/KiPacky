@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   LogIn,
   LogOut,
@@ -105,11 +105,25 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
   const [profileSuccessMsg, setProfileSuccessMsg] = useState<string | null>(null);
   const [claimingShiftId, setClaimingShiftId] = useState<number | null>(null);
 
-  // State pro zápis výroby (Fáze 2)
+  // State pro zápis výroby (Fáze 2 & 2.1 – dynamické operace dle zakázky)
   const orders = statusData.activeOrders || [];
-  const operations = statusData.activeOperations || [];
+  const allOperations = statusData.activeOperations || [];
   const [selectedOrderId, setSelectedOrderId] = useState<number>(orders[0]?.id || 0);
-  const [selectedOpId, setSelectedOpId] = useState<number>(operations[0]?.id || 0);
+
+  const availableOperations = allOperations.filter(
+    (op) => !op.orderId || op.orderId === selectedOrderId
+  );
+  const [selectedOpId, setSelectedOpId] = useState<number>(availableOperations[0]?.id || 0);
+
+  useEffect(() => {
+    const validOps = allOperations.filter(
+      (op) => !op.orderId || op.orderId === selectedOrderId
+    );
+    if (!validOps.some((op) => op.id === selectedOpId)) {
+      setSelectedOpId(validOps[0]?.id || 0);
+    }
+  }, [selectedOrderId, allOperations]);
+
   const [piecesStr, setPiecesStr] = useState<string>('');
   const [confirmingDocId, setConfirmingDocId] = useState<number | null>(null);
 
@@ -164,7 +178,7 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
   // POHLED 2: ZÁPIS VÝROBY (FÁZE 2)
   // ====================================================
   if (subView === 'production') {
-    const selectedOp = operations.find((o) => o.id === selectedOpId);
+    const selectedOp = availableOperations.find((o) => o.id === selectedOpId);
     const piecesNum = parseInt(piecesStr || '0', 10);
 
     return (
@@ -179,11 +193,19 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
               <ArrowLeft className="w-4 h-4" />
               Zpět
             </button>
-            <h2 className="text-lg font-heading font-bold text-[#F7F3E9] flex items-center gap-2">
+            <h2 className="text-base sm:text-lg font-heading font-bold text-[#F7F3E9] flex items-center gap-1.5">
               <PackagePlus className="w-5 h-5 text-[#D7BE97]" />
               Zapsat výrobu
             </h2>
-            <span className="text-xs text-[#C9DDD0]">{statusData.fullName}</span>
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center gap-1 text-[11px] font-heading font-bold text-[#FFE0DE] bg-[#A53F4E]/20 hover:bg-[#A53F4E]/35 px-2.5 py-1.5 rounded-[10px] border border-[#A53F4E]/50 cursor-pointer transition-colors"
+              title="Okamžitě se odhlásit a zavřít terminál"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Odhlásit
+            </button>
           </div>
 
           {errorMessage && (
@@ -241,33 +263,39 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
               })()}
             </div>
 
-            {/* 2. Vyberte operaci (sekce 9.4) */}
+            {/* 2. Vyberte operaci (vázáno na zakázku dle Fáze 2.1) */}
             <div>
               <label className="block text-xs font-heading font-bold uppercase tracking-wider text-[#C9DDD0] mb-1.5">
-                2. Vyberte operaci
+                2. Vyberte operaci pro vybranou zakázku
               </label>
-              <div className="grid grid-cols-2 gap-2">
-                {operations.map((op) => {
-                  const isSel = op.id === selectedOpId;
-                  return (
-                    <button
-                      key={op.id}
-                      type="button"
-                      onClick={() => setSelectedOpId(op.id)}
-                      className={`p-3 rounded-[12px] border text-left transition-all cursor-pointer min-h-[64px] flex flex-col justify-between ${
-                        isSel
-                          ? 'bg-[#285446] border-2 border-[#D7BE97] text-[#F7F3E9] shadow-md'
-                          : 'bg-[#102E26] border-[#426456] text-[#F7F3E9] hover:bg-[#285446]/50'
-                      }`}
-                    >
-                      <div className="font-heading font-bold text-xs leading-tight mb-1">{op.name}</div>
-                      <div className="text-[11px] text-[#D7BE97] font-mono font-bold">
-                        {op.ratePerPiece.toFixed(2)} Kč/ks • {op.normPerHour} ks/h
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+              {availableOperations.length === 0 ? (
+                <div className="p-3 bg-[#102E26] border border-[#426456] rounded-[12px] text-xs text-[#C9DDD0] text-center font-medium">
+                  Pro tuto zakázku nejsou definovány žádné specifické operace.
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  {availableOperations.map((op) => {
+                    const isSel = op.id === selectedOpId;
+                    return (
+                      <button
+                        key={op.id}
+                        type="button"
+                        onClick={() => setSelectedOpId(op.id)}
+                        className={`p-3 rounded-[12px] border text-left transition-all cursor-pointer min-h-[64px] flex flex-col justify-between ${
+                          isSel
+                            ? 'bg-[#285446] border-2 border-[#D7BE97] text-[#F7F3E9] shadow-md'
+                            : 'bg-[#102E26] border-[#426456] text-[#F7F3E9] hover:bg-[#285446]/50'
+                        }`}
+                      >
+                        <div className="font-heading font-bold text-xs leading-tight mb-1">{op.name}</div>
+                        <div className="text-[11px] text-[#D7BE97] font-mono font-bold">
+                          {op.ratePerPiece.toFixed(2)} Kč/ks • {op.normPerHour} ks/h
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* 3. Počet vyrobených kusů (sekce 9.5 & 9.6) */}
@@ -394,7 +422,15 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
               <FileCheck2 className="w-5 h-5 text-[#D7BE97]" />
               Směrnice a BOZP
             </h2>
-            <span className="text-xs text-[#C9DDD0]">{statusData.fullName}</span>
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center gap-1 text-[11px] font-heading font-bold text-[#FFE0DE] bg-[#A53F4E]/20 hover:bg-[#A53F4E]/35 px-2.5 py-1.5 rounded-[10px] border border-[#A53F4E]/50 cursor-pointer transition-colors"
+              title="Okamžitě se odhlásit a zavřít terminál"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Odhlásit
+            </button>
           </div>
 
           <div className="space-y-3 max-h-[65vh] overflow-y-auto pr-1">
@@ -525,7 +561,15 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
               <Calendar className="w-5 h-5 text-[#D7BE97]" />
               Směny & Samoobslužná burza
             </h2>
-            <span className="text-xs text-[#C9DDD0]">{statusData.fullName}</span>
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center gap-1 text-[11px] font-heading font-bold text-[#FFE0DE] bg-[#A53F4E]/20 hover:bg-[#A53F4E]/35 px-2.5 py-1.5 rounded-[10px] border border-[#A53F4E]/50 cursor-pointer transition-colors"
+              title="Okamžitě se odhlásit a zavřít terminál"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Odhlásit
+            </button>
           </div>
 
           <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
@@ -670,7 +714,15 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
               <User className="w-5 h-5 text-[#D7BE97]" />
               Můj profil & Výplata
             </h2>
-            <span className="text-xs text-[#C9DDD0]">{statusData.fullName}</span>
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center gap-1 text-[11px] font-heading font-bold text-[#FFE0DE] bg-[#A53F4E]/20 hover:bg-[#A53F4E]/35 px-2.5 py-1.5 rounded-[10px] border border-[#A53F4E]/50 cursor-pointer transition-colors"
+              title="Okamžitě se odhlásit a zavřít terminál"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Odhlásit
+            </button>
           </div>
 
           {profileSuccessMsg && (
@@ -766,9 +818,10 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
   // ====================================================
   if (subView === 'monthly-summary') {
     const isDpp = statusData.contractType === 'DPP';
-    const ytd = summaryData?.yearToDateNetHours || 0;
-    const dppDanger = isDpp && ytd >= 290;
-    const dppWarning = isDpp && ytd >= 250 && ytd < 290;
+    const ytdNorm = summaryData?.yearToDateNormHours ?? summaryData?.yearToDateNetHours ?? 0;
+    const normH = summaryData?.totalNormHours ?? summaryData?.totalProductiveHours ?? 0;
+    const dppDanger = isDpp && ytdNorm >= 290;
+    const dppWarning = isDpp && ytdNorm >= 250 && ytdNorm < 290;
 
     return (
       <div className="flex flex-col w-full max-w-[460px] mx-auto px-1 select-none">
@@ -786,7 +839,15 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
               <BarChart3 className="w-5 h-5 text-[#D7BE97]" />
               Můj měsíční výkaz
             </h2>
-            <span className="text-xs text-[#C9DDD0]">{statusData.fullName}</span>
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center gap-1 text-[11px] font-heading font-bold text-[#FFE0DE] bg-[#A53F4E]/20 hover:bg-[#A53F4E]/35 px-2.5 py-1.5 rounded-[10px] border border-[#A53F4E]/50 cursor-pointer transition-colors"
+              title="Okamžitě se odhlásit a zavřít terminál"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Odhlásit
+            </button>
           </div>
 
           {/* Přepínač měsíce a roku */}
@@ -830,7 +891,7 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
             </div>
           </div>
 
-          {/* Stav limitu DPP, pokud je brigádník na DPP */}
+          {/* Stav limitu DPP na základě Normočasu (Fáze 2.3) */}
           {isDpp && (
             <div
               className={`p-3 rounded-[12px] border mb-4 text-xs flex items-center justify-between ${
@@ -844,7 +905,10 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
               <div className="flex items-center gap-2">
                 <AlertOctagon className="w-4 h-4 shrink-0" />
                 <span>
-                  <strong>Roční fond DPP:</strong> {ytd.toFixed(1)} / 300 hodin
+                  <strong>Limit DPP (Normočas):</strong> {ytdNorm.toFixed(1)} / 300 h
+                  <span className="text-[11px] text-[#C9DDD0] block">
+                    Zbývá do limitu: <strong>{Math.max(0, 300 - ytdNorm).toFixed(1)} h</strong>
+                  </span>
                 </span>
               </div>
               <span className="font-heading font-bold">
@@ -870,11 +934,17 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
           ) : summaryData ? (
             <div className="space-y-4">
               {/* Přehledové karty součtů */}
-              <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                 <div className="p-2.5 bg-[#102E26] border border-[#426456] rounded-[12px]">
-                  <div className="text-[10px] uppercase font-heading font-bold text-[#C9DDD0]">Čisté hodiny</div>
-                  <div className="text-base font-extrabold text-[#D7BE97] font-mono mt-0.5 tabular-nums">
+                  <div className="text-[10px] uppercase font-heading font-bold text-[#C9DDD0]">Čistý čas</div>
+                  <div className="text-base font-extrabold text-[#F7F3E9] font-mono mt-0.5 tabular-nums">
                     {summaryData.totalNetHours.toFixed(1)} h
+                  </div>
+                </div>
+                <div className="p-2.5 bg-[#102E26] border border-[#426456] rounded-[12px]">
+                  <div className="text-[10px] uppercase font-heading font-bold text-[#D7BE97]">Normočas</div>
+                  <div className="text-base font-extrabold text-[#D7BE97] font-mono mt-0.5 tabular-nums">
+                    {normH.toFixed(1)} h
                   </div>
                 </div>
                 <div className="p-2.5 bg-[#102E26] border border-[#426456] rounded-[12px]">
@@ -884,7 +954,7 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
                   </div>
                 </div>
                 <div className="p-2.5 bg-[#285446] border border-[#D7BE97]/50 rounded-[12px]">
-                  <div className="text-[10px] uppercase font-heading font-bold text-[#D7BE97]">Výdělek celkem</div>
+                  <div className="text-[10px] uppercase font-heading font-bold text-[#D7BE97]">Výdělek</div>
                   <div className="text-base font-extrabold text-[#34C790] font-mono mt-0.5 tabular-nums">
                     {summaryData.totalEarnedCzk.toLocaleString('cs-CZ')} Kč
                   </div>
@@ -1201,15 +1271,15 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
         </div>
       )}
 
-      {/* Tlačítko Zpět (sekce 8.4 G) */}
+      {/* Tlačítko Odhlásit se a zavřít */}
       <button
         type="button"
         disabled={isSubmitting}
         onClick={onBack}
-        className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-heading font-medium text-[#C9DDD0] hover:text-[#F7F3E9] transition-colors cursor-pointer"
+        className="w-full mt-2 py-3 px-4 rounded-[14px] bg-[#8E4B2F]/20 hover:bg-[#8E4B2F]/40 border border-[#8E4B2F]/50 text-[#F7F3E9] font-heading font-bold text-sm flex items-center justify-center gap-2 cursor-pointer transition-all shadow-sm active:scale-[0.98]"
       >
-        <ArrowLeft className="w-4 h-4" />
-        Zpět / Jiný PIN
+        <LogOut className="w-4 h-4 text-[#D7BE97]" />
+        <span>Odhlásit se a zavřít</span>
       </button>
     </div>
   );

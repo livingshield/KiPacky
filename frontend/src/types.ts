@@ -9,6 +9,9 @@ export interface Employee {
   email?: string;
   bankAccount?: string;
   personalDataConfirmedAt?: string | null;
+  contractStartDate?: string | null;
+  contractEndDate?: string | null;
+  selfScheduled?: boolean;
 }
 
 export interface OrderItem {
@@ -17,7 +20,11 @@ export interface OrderItem {
   isActive?: boolean;
   createdAt?: string;
   targetPieces?: number;
+  totalPiecesTarget?: number;
+  startDate?: string | null;
+  endDate?: string | null;
   deadline?: string | null;
+  targetPricePerPiece?: number;
   description?: string;
   completedPieces?: number;
   remainingPieces?: number;
@@ -30,6 +37,37 @@ export interface OperationItem {
   normPerHour: number;
   ratePerPiece: number;
   isActive?: boolean;
+  orderId?: number | null;
+  orderName?: string;
+}
+
+export interface OrderParticipantItem {
+  employeeId: number;
+  employeeName: string;
+  contractType: string;
+  operationId: number;
+  operationName: string;
+  normPerHour: number;
+  ratePerPiece: number;
+  approvedPieces: number;
+  defectPieces: number;
+  totalEarnedCzk: number;
+  productiveHours: number;
+}
+
+export interface OrderDetailResult {
+  order: OrderItem;
+  operations: OperationItem[];
+  participants: OrderParticipantItem[];
+  stats: {
+    totalPiecesTarget: number;
+    completedPieces: number;
+    defectPieces: number;
+    remainingPieces: number;
+    percentDone: number;
+    totalEarnedCzk: number;
+    totalProductiveHours: number;
+  };
 }
 
 export interface KioskShiftItem {
@@ -166,7 +204,11 @@ export interface ShiftRecord {
   approvedPieces?: number;
   defectPieces?: number;
   productiveHours?: number;
+  normHours?: number;
   earnedCzk?: number;
+  isWeekend?: boolean;
+  eligibleWeekendOvertime?: boolean;
+  weekendHours?: number;
   isManualEdit: boolean;
   isIncomplete: boolean;
   note: string;
@@ -176,16 +218,21 @@ export interface EmployeeSummary {
   employeeId: number;
   employeeName: string;
   contractType: string;
+  selfScheduled?: boolean;
   totalShifts: number;
   totalGrossHours: number;
   totalBreakHours: number;
   totalNetHours: number;
+  totalWeekendHours?: number;
   incompleteShiftsCount: number;
   yearToDateNetHours?: number;
+  yearToDateNormHours?: number;
+  remainingDppHours?: number;
   totalApprovedPieces?: number;
   totalPendingPieces?: number;
   totalDefectPieces?: number;
   totalProductiveHours?: number;
+  normHours?: number;
   totalEarnedCzk?: number;
   shifts: ShiftRecord[];
 }
@@ -204,8 +251,12 @@ export interface KioskMonthlySummary {
   month: number;
   shifts: ShiftRecord[];
   totalNetHours: number;
+  totalNormHours?: number;
+  totalProductiveHours?: number;
   totalEarnedCzk: number;
   totalApprovedPieces: number;
   yearToDateNetHours: number;
+  yearToDateNormHours?: number;
+  remainingDppHours?: number;
   dppLimitHours: number;
 }

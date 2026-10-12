@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Shield, KeyRound, User, ArrowLeft } from 'lucide-react';
-import { adminLogin } from '../api/client';
+import { Shield, KeyRound, User, ArrowLeft, Hash, Delete } from 'lucide-react';
+import { adminLogin, adminPinLogin } from '../api/client';
 import { GREENBERG_LOGO } from '../assets/logoBase64';
 import { APP_VERSION } from '../version';
 
@@ -10,12 +10,44 @@ interface LoginPageProps {
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToKiosk }) => {
+  const [loginMode, setLoginMode] = useState<'pin' | 'credentials'>('pin');
+  const [pin, setPin] = useState('');
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handlePinDigit = (digit: string) => {
+    if (pin.length < 4 && !loading) {
+      const nextPin = pin + digit;
+      setPin(nextPin);
+      if (nextPin.length === 4) {
+        performPinLogin(nextPin);
+      }
+    }
+  };
+
+  const handlePinBackspace = () => {
+    if (!loading) {
+      setPin((prev) => prev.slice(0, -1));
+    }
+  };
+
+  const performPinLogin = async (inputPin: string) => {
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await adminPinLogin(inputPin);
+      onLoginSuccess(res.username);
+    } catch (err: any) {
+      setError(err.message || 'Nesprávný Master PIN');
+      setPin('');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCredentialsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
@@ -42,7 +74,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToKi
           Zpět na terminál docházky
         </button>
 
-        <div className="text-center mb-8 flex flex-col items-center">
+        <div className="text-center mb-6 flex flex-col items-center">
           <img
             src={GREENBERG_LOGO}
             alt="Greenberg"
@@ -56,55 +88,140 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToKi
           </p>
         </div>
 
+        {/* Přepínač režimu přihlášení */}
+        <div className="flex bg-[#F0EAE1] p-1 rounded-[12px] mb-6">
+          <button
+            type="button"
+            onClick={() => { setLoginMode('pin'); setError(null); }}
+            className={`flex-1 py-2 text-xs font-heading font-bold rounded-[8px] transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              loginMode === 'pin'
+                ? 'bg-[#193F34] text-white shadow-sm'
+                : 'text-[#55645B] hover:text-[#193F34]'
+            }`}
+          >
+            <Hash className="w-3.5 h-3.5" />
+            Rychlý Master PIN
+          </button>
+          <button
+            type="button"
+            onClick={() => { setLoginMode('credentials'); setError(null); }}
+            className={`flex-1 py-2 text-xs font-heading font-bold rounded-[8px] transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              loginMode === 'credentials'
+                ? 'bg-[#193F34] text-white shadow-sm'
+                : 'text-[#55645B] hover:text-[#193F34]'
+            }`}
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            Jméno a heslo
+          </button>
+        </div>
+
         {error && (
           <div className="mb-6 p-3 bg-[#A53F4E]/10 border border-[#A53F4E]/30 rounded-[12px] text-[#A53F4E] text-xs font-semibold text-center">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        {loginMode === 'pin' ? (
           <div>
-            <label className="block text-xs font-heading font-bold uppercase tracking-wider text-[#55645B] mb-1.5">
-              Uživatelské jméno
-            </label>
-            <div className="relative">
-              <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#55645B]" />
-              <input
-                type="text"
-                required
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="admin"
-                className="w-full pl-10 pr-4 py-3 bg-[#FFFFFF] border border-[#E4DDD0] rounded-[10px] text-[#232B28] placeholder-[#55645B]/60 focus:outline-none focus:border-[#193F34] transition-all text-sm font-medium"
-              />
+            <div className="text-center mb-5">
+              <span className="text-xs text-[#55645B] font-sans">
+                Zadejte 4místný administrátorský PIN
+              </span>
+              <div className="flex justify-center gap-3 mt-3">
+                {[0, 1, 2, 3].map((idx) => (
+                  <div
+                    key={idx}
+                    className={`w-4 h-4 rounded-full border-2 transition-all ${
+                      pin.length > idx
+                        ? 'bg-[#193F34] border-[#193F34] scale-110'
+                        : 'border-[#C9DDD0] bg-transparent'
+                    }`}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
 
-          <div>
-            <label className="block text-xs font-heading font-bold uppercase tracking-wider text-[#55645B] mb-1.5">
-              Heslo
-            </label>
-            <div className="relative">
-              <KeyRound className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#55645B]" />
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full pl-10 pr-4 py-3 bg-[#FFFFFF] border border-[#E4DDD0] rounded-[10px] text-[#232B28] placeholder-[#55645B]/60 focus:outline-none focus:border-[#193F34] transition-all text-sm font-medium"
-              />
+            {/* Klávesnice 1-9, 0 */}
+            <div className="grid grid-cols-3 gap-2.5 max-w-[280px] mx-auto">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
+                <button
+                  key={digit}
+                  type="button"
+                  disabled={loading}
+                  onClick={() => handlePinDigit(digit.toString())}
+                  className="h-13 bg-[#F7F3E9] hover:bg-[#EAE4D5] active:bg-[#D7BE97] border border-[#E4DDD0] rounded-[12px] font-heading font-extrabold text-xl text-[#193F34] transition-all shadow-sm flex items-center justify-center cursor-pointer select-none"
+                >
+                  {digit}
+                </button>
+              ))}
+              <div />
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => handlePinDigit('0')}
+                className="h-13 bg-[#F7F3E9] hover:bg-[#EAE4D5] active:bg-[#D7BE97] border border-[#E4DDD0] rounded-[12px] font-heading font-extrabold text-xl text-[#193F34] transition-all shadow-sm flex items-center justify-center cursor-pointer select-none"
+              >
+                0
+              </button>
+              <button
+                type="button"
+                disabled={loading || pin.length === 0}
+                onClick={handlePinBackspace}
+                className="h-13 bg-[#F7F3E9] hover:bg-[#EAE4D5] active:bg-[#D7BE97] border border-[#E4DDD0] rounded-[12px] font-heading font-semibold text-sm text-[#8E4B2F] transition-all shadow-sm flex items-center justify-center cursor-pointer select-none disabled:opacity-30"
+              >
+                <Delete className="w-5 h-5" />
+              </button>
             </div>
+            {loading && (
+              <p className="text-center text-xs text-[#55645B] mt-4">Ověřuji PIN...</p>
+            )}
           </div>
+        ) : (
+          <form onSubmit={handleCredentialsSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-heading font-bold uppercase tracking-wider text-[#55645B] mb-1.5">
+                Uživatelské jméno
+              </label>
+              <div className="relative">
+                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#55645B]" />
+                <input
+                  type="text"
+                  required
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="admin"
+                  className="w-full pl-10 pr-4 py-3 bg-[#FFFFFF] border border-[#E4DDD0] rounded-[10px] text-[#232B28] placeholder-[#55645B]/60 focus:outline-none focus:border-[#193F34] transition-all text-sm font-medium"
+                />
+              </div>
+            </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full mt-2 py-3.5 px-4 bg-[#193F34] hover:bg-[#285446] active:bg-[#102E26] text-white font-heading font-bold rounded-[12px] transition-all shadow-md cursor-pointer disabled:opacity-50"
-          >
-            {loading ? 'Přihlašuji...' : 'Přihlásit se do správy'}
-          </button>
-        </form>
+            <div>
+              <label className="block text-xs font-heading font-bold uppercase tracking-wider text-[#55645B] mb-1.5">
+                Heslo
+              </label>
+              <div className="relative">
+                <KeyRound className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#55645B]" />
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full pl-10 pr-4 py-3 bg-[#FFFFFF] border border-[#E4DDD0] rounded-[10px] text-[#232B28] placeholder-[#55645B]/60 focus:outline-none focus:border-[#193F34] transition-all text-sm font-medium"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full mt-2 py-3.5 px-4 bg-[#193F34] hover:bg-[#285446] active:bg-[#102E26] text-white font-heading font-bold rounded-[12px] transition-all shadow-md cursor-pointer disabled:opacity-50"
+            >
+              {loading ? 'Přihlašuji...' : 'Přihlásit se do správy'}
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );
