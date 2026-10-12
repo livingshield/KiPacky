@@ -1140,7 +1140,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                             Boolean(duplicateCreateEmp) ||
                             newPinCode.length !== 4 ||
                             !newFullName.trim()
-                              ? 'bg-[#E9E1D2] text-[#193F34] text-[#6C7E74] cursor-not-allowed'
+                              ? 'bg-[#E9E1D2] text-[#88968F] cursor-not-allowed'
                               : 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer shadow-lg shadow-emerald-600/20'
                           }`}
                         >
@@ -1388,7 +1388,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                                       (e) =>
                                         e.pinCode === editingEmp.pinCode && e.id !== editingEmp.id
                                     )
-                                      ? 'bg-[#E9E1D2] text-[#193F34] text-[#6C7E74] cursor-not-allowed'
+                                      ? 'bg-[#E9E1D2] text-[#88968F] cursor-not-allowed'
                                       : 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer shadow-sm'
                                   }`}
                                 >
@@ -1406,7 +1406,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                               <button
                                 type="button"
                                 onClick={() => setEditingEmp(emp)}
-                                className="p-1.5 text-[#4E6157] hover:text-[#193F34] transition-colors cursor-pointer rounded-lg hover:bg-[#E9E1D2] text-[#193F34]"
+                                className="p-1.5 text-[#4E6157] hover:text-[#193F34] transition-colors cursor-pointer rounded-lg hover:bg-[#E9E1D2]"
                                 title="Upravit zaměstnance / PIN"
                               >
                                 <Edit2 className="w-4 h-4" />
@@ -1611,7 +1611,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                               <button
                                 type="button"
                                 onClick={() => openEditLogModal(log)}
-                                className="p-1.5 text-[#4E6157] hover:text-[#193F34] rounded-lg hover:bg-[#E9E1D2] text-[#193F34] transition-colors cursor-pointer"
+                                className="p-1.5 text-[#4E6157] hover:text-[#193F34] rounded-lg hover:bg-[#E9E1D2] transition-colors cursor-pointer"
                                 title="Upravit čas"
                               >
                                 <Edit2 className="w-4 h-4" />
@@ -1619,7 +1619,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                               <button
                                 type="button"
                                 onClick={() => handleDeleteLog(log.id)}
-                                className="p-1.5 text-[#4E6157] hover:text-rose-400 rounded-lg hover:bg-[#E9E1D2] text-[#193F34] transition-colors cursor-pointer"
+                                className="p-1.5 text-[#4E6157] hover:text-rose-400 rounded-lg hover:bg-[#E9E1D2] transition-colors cursor-pointer"
                                 title="Smazat záznam"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -1805,7 +1805,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteProdRow(p.id)}
-                                  className="p-1.5 text-[#6C7E74] hover:text-rose-400 rounded-lg hover:bg-[#E9E1D2] text-[#193F34] cursor-pointer"
+                                  className="p-1.5 text-[#6C7E74] hover:text-rose-400 rounded-lg hover:bg-[#E9E1D2] cursor-pointer"
                                   title="Smazat záznam"
                                 >
                                   <Trash2 className="w-4 h-4" />
@@ -1950,7 +1950,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                                 <button
                                   type="button"
                                   onClick={() => setEditingOrder(ord)}
-                                  className="p-1 text-[#4E6157] hover:text-white rounded-lg hover:bg-[#E9E1D2] text-[#193F34] cursor-pointer"
+                                  className="p-1 text-[#4E6157] hover:text-white rounded-lg hover:bg-[#E9E1D2] cursor-pointer"
                                   title="Upravit zakázku"
                                 >
                                   <Edit2 className="w-3.5 h-3.5" />
@@ -2101,7 +2101,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                             <button
                               type="button"
                               onClick={() => setEditingOp(op)}
-                              className="p-1.5 text-[#4E6157] hover:text-white rounded-lg hover:bg-[#E9E1D2] text-[#193F34] cursor-pointer"
+                              className="p-1.5 text-[#4E6157] hover:text-white rounded-lg hover:bg-[#E9E1D2] cursor-pointer"
                             >
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
@@ -2787,7 +2787,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                                     className={
                                       shift.isIncomplete
                                         ? 'bg-amber-500/5 hover:bg-amber-500/10'
-                                        : 'hover:bg-[#E9E1D2] text-[#193F34]/30'
+                                        : 'hover:bg-[#E9E1D2]/30'
                                     }
                                   >
                                     <td className="px-4 py-3 font-medium text-white">
@@ -2882,45 +2882,219 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
           const dailySymbol = symbols[daySeed % symbols.length];
           const dailyCode = String(1000 + ((daySeed * 73) % 8999));
 
+          const handlePrintQrSheet = () => {
+            const win = window.open('', '_blank');
+            if (!win) return;
+
+            win.document.write(`
+              <!DOCTYPE html>
+              <html lang="cs">
+                <head>
+                  <meta charset="UTF-8" />
+                  <title>Vchodový QR kód – Greenberg Nepomuk</title>
+                  <style>
+                    @page { size: A4 portrait; margin: 15mm; }
+                    body {
+                      font-family: 'Segoe UI', Arial, sans-serif;
+                      color: #232B28;
+                      background: #fff;
+                      margin: 0;
+                      padding: 20px;
+                      display: flex;
+                      flex-direction: column;
+                      align-items: center;
+                      justify-content: space-between;
+                      min-height: 92vh;
+                      box-sizing: border-box;
+                    }
+                    .header {
+                      text-align: center;
+                      border-bottom: 2px solid #193F34;
+                      padding-bottom: 15px;
+                      width: 100%;
+                    }
+                    .logo {
+                      height: 52px;
+                      margin-bottom: 8px;
+                    }
+                    .title {
+                      font-size: 26px;
+                      font-weight: 800;
+                      color: #193F34;
+                      margin: 0;
+                      letter-spacing: -0.5px;
+                    }
+                    .subtitle {
+                      font-size: 13px;
+                      color: #55645B;
+                      margin-top: 4px;
+                    }
+                    .qr-container {
+                      margin: 30px auto;
+                      padding: 24px;
+                      border: 3px solid #193F34;
+                      border-radius: 24px;
+                      display: inline-block;
+                      background: #fff;
+                      box-shadow: 0 4px 20px rgba(25, 63, 52, 0.08);
+                      text-align: center;
+                    }
+                    .instructions {
+                      width: 100%;
+                      max-width: 520px;
+                      background: #F7F3E9;
+                      border: 1px solid #E4DDD0;
+                      border-radius: 16px;
+                      padding: 16px 22px;
+                      margin-top: 10px;
+                      box-sizing: border-box;
+                    }
+                    .instructions h3 {
+                      margin: 0 0 10px 0;
+                      font-size: 14px;
+                      font-weight: 700;
+                      color: #193F34;
+                      text-transform: uppercase;
+                      letter-spacing: 0.5px;
+                    }
+                    .instructions ol {
+                      margin: 0;
+                      padding-left: 20px;
+                      font-size: 12.5px;
+                      color: #232B28;
+                      line-height: 1.6;
+                    }
+                    .instructions li { margin-bottom: 4px; }
+                    .url-box {
+                      margin-top: 12px;
+                      font-family: monospace;
+                      font-size: 11px;
+                      color: #55645B;
+                      background: #fff;
+                      border: 1px dashed #D6DCD3;
+                      padding: 6px 12px;
+                      border-radius: 8px;
+                      display: inline-block;
+                    }
+                    .daily-box {
+                      margin-top: 16px;
+                      display: flex;
+                      justify-content: center;
+                      gap: 20px;
+                      font-size: 12px;
+                      color: #193F34;
+                    }
+                    .daily-item {
+                      background: #EAF2ED;
+                      border: 1px solid #A8C7B5;
+                      padding: 6px 16px;
+                      border-radius: 10px;
+                      font-weight: 600;
+                    }
+                    .footer {
+                      border-top: 1px solid #E4DDD0;
+                      padding-top: 15px;
+                      width: 100%;
+                      text-align: center;
+                      font-size: 11px;
+                      color: #88968F;
+                    }
+                  </style>
+                </head>
+                <body>
+                  <div class="header">
+                    <img src="${GREENBERG_LOGO}" alt="Greenberg" class="logo" />
+                    <h1 class="title">EVIDENCE DOCHÁZKY A VÝROBY</h1>
+                    <div class="subtitle">Greenberg s.r.o. • Provozovna Nepomuk • Systém Kípačky</div>
+                  </div>
+
+                  <div class="qr-container">
+                    <div id="qrcode"></div>
+                    <div class="url-box">${currentUrl}</div>
+                  </div>
+
+                  <div class="instructions">
+                    <h3>Pokyny pro příchod a odchod:</h3>
+                    <ol>
+                      <li>Otevřete fotoaparát na svém mobilním telefonu a <strong>naskenujte QR kód</strong>.</li>
+                      <li>V otevřené aplikaci zadejte svůj <strong>4místný osobní PIN</strong>.</li>
+                      <li>Zvolte požadovanou akci: <strong>PŘÍCHOD</strong>, <strong>PŘESTÁVKA</strong>, <strong>ZÁPIS VÝROBY</strong> nebo <strong>ODCHOD</strong>.</li>
+                      <li>Při výpadku signálu aplikace funguje i <strong>offline</strong> a odešle data po připojení.</li>
+                    </ol>
+                  </div>
+
+                  <div class="daily-box">
+                    <div class="daily-item">Datum: ${d.toLocaleDateString('cs-CZ')}</div>
+                    <div class="daily-item">Symbol dne: ${dailySymbol}</div>
+                    <div class="daily-item">Kontrolní kód: ${dailyCode}</div>
+                  </div>
+
+                  <div class="footer">
+                    Vytvořeno v systému Kípačky • Platný provozní předpis dílny • Pro pomoc kontaktujte vedoucí provozu (Martu Chorobikovou)
+                  </div>
+
+                  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+                  <script>
+                    window.onload = function() {
+                      new QRCode(document.getElementById("qrcode"), {
+                        text: "${currentUrl}",
+                        width: 260,
+                        height: 260,
+                        colorDark: "#193F34",
+                        colorLight: "#ffffff",
+                        correctLevel: QRCode.CorrectLevel.H
+                      });
+                      setTimeout(function() { window.print(); }, 400);
+                    };
+                  </script>
+                </body>
+              </html>
+            `);
+            win.document.close();
+          };
+
           return (
             <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
               <div className="bg-white border border-[#E4DDD0] rounded-3xl p-6 sm:p-8 max-w-sm w-full text-center shadow-2xl">
+                <div className="bg-white/95 px-3 py-1.5 rounded-xl border border-[#E4DDD0] inline-block mb-3 shadow-xs">
+                  <img src={GREENBERG_LOGO} alt="Greenberg" className="h-6 w-auto object-contain mx-auto" />
+                </div>
                 <h3 className="text-xl font-bold font-heading text-[#193F34] mb-1">
-                  Vchodový QR kód & Symbol dne
+                  Vchodový QR kód
                 </h3>
                 <p className="text-xs text-[#4E6157] mb-4">
-                  Vytiskněte tento QR kód ke dveřím dílny nebo zobrazte dnešní kontrolní symbol.
+                  Vytiskněte tento plakát na formát A4 ke dveřím dílny v Nepomuku.
                 </p>
 
-                <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 mb-4">
-                  <div className="text-[11px] uppercase tracking-wider text-amber-300 font-semibold">
+                <div className="bg-[#EAF2ED] border border-[#A8C7B5] rounded-2xl p-3 mb-4">
+                  <div className="text-[11px] uppercase tracking-wider text-[#16634D] font-semibold">
                     Symbol dne ({d.toLocaleDateString('cs-CZ')})
                   </div>
-                  <div className="text-lg font-extrabold text-white mt-0.5">{dailySymbol}</div>
-                  <div className="text-xs font-mono text-amber-400 mt-0.5">
+                  <div className="text-lg font-extrabold text-[#193F34] mt-0.5">{dailySymbol}</div>
+                  <div className="text-xs font-mono text-[#16634D] mt-0.5">
                     Kontrolní kód dne: <strong>{dailyCode}</strong>
                   </div>
                 </div>
 
-                <div className="bg-white p-4 rounded-2xl inline-block shadow-inner mb-4">
-                  <QRCodeSVG value={currentUrl} size={200} level="H" />
+                <div className="bg-[#F7F3E9] p-4 rounded-2xl inline-block border border-[#E4DDD0] shadow-inner mb-4">
+                  <QRCodeSVG value={currentUrl} size={190} level="H" fgColor="#193F34" />
                 </div>
 
-                <p className="text-xs text-[#4E6157] font-mono mb-5 break-all">{currentUrl}</p>
+                <p className="text-[11px] text-[#4E6157] font-mono mb-5 break-all">{currentUrl}</p>
 
                 <div className="flex gap-3">
                   <button
                     type="button"
-                    onClick={() => window.print()}
-                    className="flex-1 py-3 bg-[#193F34] hover:bg-[#285446] text-[#F7F3E9] rounded-xl text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-sky-600/20"
+                    onClick={handlePrintQrSheet}
+                    className="flex-1 py-3 bg-[#193F34] hover:bg-[#285446] text-[#F7F3E9] rounded-xl text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer shadow-md transition-colors"
                   >
                     <Printer className="w-4 h-4" />
-                    Vytisknout
+                    Vytisknout A4
                   </button>
                   <button
                     type="button"
                     onClick={() => setShowQrModal(false)}
-                    className="flex-1 py-3 bg-[#E9E1D2] hover:bg-[#DDD5C5] text-[#193F34] rounded-xl text-sm font-semibold cursor-pointer"
+                    className="flex-1 py-3 bg-[#E9E1D2] hover:bg-[#DDD5C5] text-[#193F34] rounded-xl text-sm font-semibold cursor-pointer transition-colors"
                   >
                     Zavřít
                   </button>
@@ -3126,7 +3300,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
 
                         if (dayShifts.length === 0) {
                           return (
-                            <tr key={day} className="hover:bg-[#E9E1D2] text-[#193F34]/20 text-[#6C7E74]">
+                            <tr key={day} className="hover:bg-[#E9E1D2]/20 text-[#6C7E74]">
                               <td className="px-3 py-1.5 font-mono text-[#4E6157]">
                                 {day}. {reportMonth}.
                               </td>
