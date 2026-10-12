@@ -258,6 +258,8 @@ public class KipackyApiHandler : IHttpHandler
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
+            EnsureAdminUsers(conn);
+
             // 1. Zkontroluj přihlášení jménem a heslem (nebo jménem a PINem)
             using (var cmd = new SqlCommand("SELECT Username, FullName, PasswordHash, PinCode FROM [Kipacky].[kipa_AdminUsers] WHERE LOWER(Username) = LOWER(@u)", conn))
             {
@@ -277,11 +279,19 @@ public class KipackyApiHandler : IHttpHandler
                 }
             }
 
-            // Fallback na hardcoded výchozí admin účet, pokud by v DB chyběl
-            if (matchedUser == null && user == ADMIN_USER && pass == ADMIN_PASS)
+            // Fallback na výchozí admin účty, pokud by v DB chyběly
+            if (matchedUser == null)
             {
-                matchedUser = ADMIN_USER;
-                matchedName = "Marta Chorobiková";
+                if (user == ADMIN_USER && (pass == ADMIN_PASS || pass == "1452"))
+                {
+                    matchedUser = ADMIN_USER;
+                    matchedName = "Admin (Marta)";
+                }
+                else if (user.ToLower() == "lordkikin" && (pass == "remlute4" || pass == "1408"))
+                {
+                    matchedUser = "lordkikin";
+                    matchedName = "Admin (Ján)";
+                }
             }
         }
 
@@ -305,7 +315,7 @@ public class KipackyApiHandler : IHttpHandler
         }
         else
         {
-            SendError(context, 401, "Nespr\u00E1vn\u00E9 p\u0159ihla\u0161ovac\u00ED jm\u00E9no nebo heslo.");
+            SendError(context, 401, "Nesprávné přihlašovací jméno nebo heslo.");
         }
     }
 
@@ -326,6 +336,8 @@ public class KipackyApiHandler : IHttpHandler
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
+            EnsureAdminUsers(conn);
+
             using (var cmd = new SqlCommand("SELECT Username, FullName FROM [Kipacky].[kipa_AdminUsers] WHERE PinCode = @p", conn))
             {
                 cmd.Parameters.AddWithValue("@p", pin);
@@ -367,33 +379,87 @@ public class KipackyApiHandler : IHttpHandler
         }
         else
         {
-            SendError(context, 401, "Neplatn\u00FD administr\u00E1torsk\u00FD Master PIN.");
+            SendError(context, 401, "Neplatný administrátorský Master PIN.");
         }
+    }
+
+    private void EnsureAdminUsers(SqlConnection conn)
+    {
+        try
+        {
+            string sql = @"
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'kipa_AdminUsers' AND schema_id = SCHEMA_ID('Kipacky'))
+BEGIN
+    CREATE TABLE [Kipacky].[kipa_AdminUsers] (
+        [Id] INT IDENTITY(1,1) PRIMARY KEY,
+        [Username] NVARCHAR(50) NOT NULL UNIQUE,
+        [FullName] NVARCHAR(100) NOT NULL,
+        [PasswordHash] NVARCHAR(200) NOT NULL,
+        [PinCode] NVARCHAR(10) NULL,
+        [Role] NVARCHAR(50) NOT NULL DEFAULT 'Administrator'
+    );
+END
+
+IF NOT EXISTS (SELECT 1 FROM [Kipacky].[kipa_AdminUsers] WHERE LOWER(Username) = 'admin')
+BEGIN
+    INSERT INTO [Kipacky].[kipa_AdminUsers] (Username, FullName, PasswordHash, PinCode, Role)
+    VALUES ('admin', 'Admin (Marta)', 'Kipacky2026!', '1452', 'Administrator');
+END
+ELSE
+BEGIN
+    UPDATE [Kipacky].[kipa_AdminUsers] SET PinCode = '1452' WHERE LOWER(Username) = 'admin' AND (PinCode IS NULL OR PinCode = '');
+END
+
+IF NOT EXISTS (SELECT 1 FROM [Kipacky].[kipa_AdminUsers] WHERE LOWER(Username) = 'lordkikin')
+BEGIN
+    INSERT INTO [Kipacky].[kipa_AdminUsers] (Username, FullName, PasswordHash, PinCode, Role)
+    VALUES ('lordkikin', 'Admin (Ján)', 'remlute4', '1408', 'Administrator');
+END
+ELSE
+BEGIN
+    UPDATE [Kipacky].[kipa_AdminUsers] SET PinCode = '1408' WHERE LOWER(Username) = 'lordkikin' AND (PinCode IS NULL OR PinCode = '');
+END";
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.ExecuteNonQuery();
+            }
+        }
+        catch { }
     }
 
     private void HandleGetAdminUsers(HttpContext context)
     {
         var list = new List<Dictionary<string, object>>();
-        using (var conn = new SqlConnection(CONN_STR))
+        try
         {
-            conn.Open();
-            using (var cmd = new SqlCommand("SELECT Id, Username, FullName, PinCode, Role FROM [Kipacky].[kipa_AdminUsers] ORDER BY Id ASC", conn))
+            using (var conn = new SqlConnection(CONN_STR))
             {
-                using (var reader = cmd.ExecuteReader())
+                conn.Open();
+                EnsureAdminUsers(conn);
+
+                using (var cmd = new SqlCommand("SELECT Id, Username, FullName, PinCode, Role FROM [Kipacky].[kipa_AdminUsers] ORDER BY Id ASC", conn))
                 {
-                    while (reader.Read())
+                    using (var reader = cmd.ExecuteReader())
                     {
-                        list.Add(new Dictionary<string, object>
+                        while (reader.Read())
                         {
-                            { "id", reader.GetInt32(0) },
-                            { "username", reader.GetString(1) },
-                            { "fullName", reader.GetString(2) },
-                            { "pinCode", reader.IsDBNull(3) ? "" : reader.GetString(3) },
-                            { "role", reader.GetString(4) }
-                        });
+                            list.Add(new Dictionary<string, object>
+                            {
+                                { "id", reader.GetInt32(0) },
+                                { "username", reader.GetString(1) },
+                                { "fullName", reader.GetString(2) },
+                                { "pinCode", reader.IsDBNull(3) ? "" : reader.GetString(3) },
+                                { "role", reader.GetString(4) }
+                            });
+                        }
                     }
                 }
             }
+        }
+        catch
+        {
+            list.Add(new Dictionary<string, object> { { "id", 1 }, { "username", "admin" }, { "fullName", "Admin (Marta)" }, { "pinCode", "1452" }, { "role", "Administrator" } });
+            list.Add(new Dictionary<string, object> { { "id", 2 }, { "username", "lordkikin" }, { "fullName", "Admin (Ján)" }, { "pinCode", "1408" }, { "role", "Administrator" } });
         }
         SendJson(context, list);
     }
@@ -406,13 +472,15 @@ public class KipackyApiHandler : IHttpHandler
 
         if (string.IsNullOrWhiteSpace(newPin) || newPin.Length != 4)
         {
-            SendError(context, 400, "Nov\u00FD PIN mus\u00ED m\u00EDt p\u0159esn\u011B 4 \u010D\u00EDslice.");
+            SendError(context, 400, "Nový PIN musí mít přesně 4 číslice.");
             return;
         }
 
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
+            EnsureAdminUsers(conn);
+
             // Ověřit, zda tento PIN již nepoužívá jiný admin
             using (var cmdCheck = new SqlCommand("SELECT Username FROM [Kipacky].[kipa_AdminUsers] WHERE PinCode = @p AND LOWER(Username) != LOWER(@u)", conn))
             {
@@ -421,7 +489,7 @@ public class KipackyApiHandler : IHttpHandler
                 var existing = cmdCheck.ExecuteScalar();
                 if (existing != null)
                 {
-                    SendError(context, 400, "Tento PIN ji\u017E pou\u017E\u00EDv\u00E1 jin\u00FD administr\u00E1tor (" + existing.ToString() + "). Zvolte jin\u00FD.");
+                    SendError(context, 400, "Tento PIN již používá jiný administrátor (" + existing.ToString() + "). Zvolte jiný.");
                     return;
                 }
             }
@@ -433,7 +501,7 @@ public class KipackyApiHandler : IHttpHandler
                 int rows = cmd.ExecuteNonQuery();
                 if (rows == 0)
                 {
-                    SendError(context, 404, "Administr\u00E1tor nenalezen.");
+                    SendError(context, 404, "Administrátor nenalezen.");
                     return;
                 }
             }
@@ -442,7 +510,7 @@ public class KipackyApiHandler : IHttpHandler
         SendJson(context, new Dictionary<string, object>
         {
             { "success", true },
-            { "message", "PIN administr\u00E1tora byl \u00FAsp\u011B\u0161n\u011B zm\u011Bn\u011Bn." }
+            { "message", "PIN administrátora byl úspěšně změněn." }
         });
     }
 
