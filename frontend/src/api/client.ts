@@ -205,6 +205,27 @@ export async function checkAuth(): Promise<{ isAuthenticated: boolean; username:
   return { isAuthenticated: false, username: null };
 }
 
+export async function fetchAdminUsers(): Promise<Array<{ id: number; username: string; fullName: string; pinCode: string; role: string }>> {
+  const res = await fetch(`${API_BASE}?action=get-admin-users`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Nepodařilo se načíst administrátory');
+  return res.json();
+}
+
+export async function changeAdminPin(username: string, newPin: string): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${API_BASE}?action=change-admin-pin`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ username, newPin }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Nepodařilo se změnit PIN');
+  }
+  return res.json();
+}
+
 export async function claimShift(pinCode: string, shiftId: number): Promise<{ success: boolean; message: string }> {
   const res = await fetch(`${API_BASE}?action=claim-shift`, {
     method: 'POST',

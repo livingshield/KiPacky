@@ -260,3 +260,11 @@ export interface KioskMonthlySummary {
   remainingDppHours?: number;
   dppLimitHours: number;
 }
+
+export interface AdminUserItem {
+  id: number;
+  username: string;
+  fullName: string;
+  pinCode: string;
+  role: string;
+}

@@ -73,6 +73,14 @@ public class KipackyApiHandler : IHttpHandler
                 case "admin-pin-login":
                     HandleAdminPinLogin(context);
                     break;
+                case "change-admin-pin":
+                    RequireAuth(context);
+                    HandleChangeAdminPin(context);
+                    break;
+                case "get-admin-users":
+                    RequireAuth(context);
+                    HandleGetAdminUsers(context);
+                    break;
                 case "logout":
                     HandleLogout(context);
                     break;
@@ -244,8 +252,40 @@ public class KipackyApiHandler : IHttpHandler
         string user = data.ContainsKey("Username") ? Convert.ToString(data["Username"]) : (data.ContainsKey("username") ? Convert.ToString(data["username"]) : "");
         string pass = data.ContainsKey("Password") ? Convert.ToString(data["Password"]) : (data.ContainsKey("password") ? Convert.ToString(data["password"]) : "");
 
-        bool isMasterPin = (user == "admin" || string.IsNullOrEmpty(user)) && (pass == "1452" || pass == "1408");
-        if ((user == ADMIN_USER && pass == ADMIN_PASS) || isMasterPin)
+        string matchedUser = null;
+        string matchedName = null;
+
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            // 1. Zkontroluj přihlášení jménem a heslem (nebo jménem a PINem)
+            using (var cmd = new SqlCommand("SELECT Username, FullName, PasswordHash, PinCode FROM [Kipacky].[kipa_AdminUsers] WHERE LOWER(Username) = LOWER(@u)", conn))
+            {
+                cmd.Parameters.AddWithValue("@u", user);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    if (reader.Read())
+                    {
+                        string dbPass = reader.GetString(2);
+                        string dbPin = reader.IsDBNull(3) ? "" : reader.GetString(3);
+                        if (pass == dbPass || pass == dbPin)
+                        {
+                            matchedUser = reader.GetString(0);
+                            matchedName = reader.GetString(1);
+                        }
+                    }
+                }
+            }
+
+            // Fallback na hardcoded výchozí admin účet, pokud by v DB chyběl
+            if (matchedUser == null && user == ADMIN_USER && pass == ADMIN_PASS)
+            {
+                matchedUser = ADMIN_USER;
+                matchedName = "Marta Chorobiková";
+            }
+        }
+
+        if (matchedUser != null)
         {
             string token = "kipacky_admin_ok_" + Guid.NewGuid().ToString("N");
             var cookie = new HttpCookie(COOKIE_NAME, token)
@@ -259,7 +299,7 @@ public class KipackyApiHandler : IHttpHandler
             SendJson(context, new Dictionary<string, object>
             {
                 { "success", true },
-                { "username", isMasterPin ? (pass == "1408" ? "Admin (Ján)" : "Admin (Marta)") : ADMIN_USER },
+                { "username", matchedName ?? matchedUser },
                 { "token", token }
             });
         }
@@ -274,7 +314,40 @@ public class KipackyApiHandler : IHttpHandler
         var data = ReadJsonBody(context);
         string pin = data.ContainsKey("pin") ? Convert.ToString(data["pin"]) : (data.ContainsKey("pinCode") ? Convert.ToString(data["pinCode"]) : "");
 
-        if (pin == "1452" || pin == "1408")
+        if (string.IsNullOrWhiteSpace(pin))
+        {
+            SendError(context, 400, "Zadejte PIN.");
+            return;
+        }
+
+        string matchedUser = null;
+        string matchedName = null;
+
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            using (var cmd = new SqlCommand("SELECT Username, FullName FROM [Kipacky].[kipa_AdminUsers] WHERE PinCode = @p", conn))
+            {
+                cmd.Parameters.AddWithValue("@p", pin);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    if (reader.Read())
+                    {
+                        matchedUser = reader.GetString(0);
+                        matchedName = reader.GetString(1);
+                    }
+                }
+            }
+
+            // Bezpečnostní záložní fallback pro 1452 a 1408
+            if (matchedUser == null)
+            {
+                if (pin == "1452") { matchedUser = "admin"; matchedName = "Admin (Marta)"; }
+                else if (pin == "1408") { matchedUser = "lordkikin"; matchedName = "Admin (Ján)"; }
+            }
+        }
+
+        if (matchedUser != null)
         {
             string token = "kipacky_admin_ok_" + Guid.NewGuid().ToString("N");
             var cookie = new HttpCookie(COOKIE_NAME, token)
@@ -288,7 +361,7 @@ public class KipackyApiHandler : IHttpHandler
             SendJson(context, new Dictionary<string, object>
             {
                 { "success", true },
-                { "username", pin == "1408" ? "Admin (Ján)" : "Admin (Marta)" },
+                { "username", matchedName ?? matchedUser },
                 { "token", token }
             });
         }
@@ -296,6 +369,81 @@ public class KipackyApiHandler : IHttpHandler
         {
             SendError(context, 401, "Neplatn\u00FD administr\u00E1torsk\u00FD Master PIN.");
         }
+    }
+
+    private void HandleGetAdminUsers(HttpContext context)
+    {
+        var list = new List<Dictionary<string, object>>();
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            using (var cmd = new SqlCommand("SELECT Id, Username, FullName, PinCode, Role FROM [Kipacky].[kipa_AdminUsers] ORDER BY Id ASC", conn))
+            {
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        list.Add(new Dictionary<string, object>
+                        {
+                            { "id", reader.GetInt32(0) },
+                            { "username", reader.GetString(1) },
+                            { "fullName", reader.GetString(2) },
+                            { "pinCode", reader.IsDBNull(3) ? "" : reader.GetString(3) },
+                            { "role", reader.GetString(4) }
+                        });
+                    }
+                }
+            }
+        }
+        SendJson(context, list);
+    }
+
+    private void HandleChangeAdminPin(HttpContext context)
+    {
+        var data = ReadJsonBody(context);
+        string username = data.ContainsKey("username") ? Convert.ToString(data["username"]) : "";
+        string newPin = data.ContainsKey("newPin") ? Convert.ToString(data["newPin"]) : "";
+
+        if (string.IsNullOrWhiteSpace(newPin) || newPin.Length != 4)
+        {
+            SendError(context, 400, "Nov\u00FD PIN mus\u00ED m\u00EDt p\u0159esn\u011B 4 \u010D\u00EDslice.");
+            return;
+        }
+
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            // Ověřit, zda tento PIN již nepoužívá jiný admin
+            using (var cmdCheck = new SqlCommand("SELECT Username FROM [Kipacky].[kipa_AdminUsers] WHERE PinCode = @p AND LOWER(Username) != LOWER(@u)", conn))
+            {
+                cmdCheck.Parameters.AddWithValue("@p", newPin);
+                cmdCheck.Parameters.AddWithValue("@u", username);
+                var existing = cmdCheck.ExecuteScalar();
+                if (existing != null)
+                {
+                    SendError(context, 400, "Tento PIN ji\u017E pou\u017E\u00EDv\u00E1 jin\u00FD administr\u00E1tor (" + existing.ToString() + "). Zvolte jin\u00FD.");
+                    return;
+                }
+            }
+
+            using (var cmd = new SqlCommand("UPDATE [Kipacky].[kipa_AdminUsers] SET PinCode = @p WHERE LOWER(Username) = LOWER(@u)", conn))
+            {
+                cmd.Parameters.AddWithValue("@p", newPin);
+                cmd.Parameters.AddWithValue("@u", username);
+                int rows = cmd.ExecuteNonQuery();
+                if (rows == 0)
+                {
+                    SendError(context, 404, "Administr\u00E1tor nenalezen.");
+                    return;
+                }
+            }
+        }
+
+        SendJson(context, new Dictionary<string, object>
+        {
+            { "success", true },
+            { "message", "PIN administr\u00E1tora byl \u00FAsp\u011B\u0161n\u011B zm\u011Bn\u011Bn." }
+        });
     }
 
     private void HandleLogout(HttpContext context)
@@ -316,7 +464,7 @@ public class KipackyApiHandler : IHttpHandler
         SendJson(context, new Dictionary<string, object>
         {
             { "isAuthenticated", auth },
-            { "username", auth ? ADMIN_USER : null }
+            { "username", auth ? "admin" : null }
         });
     }
 

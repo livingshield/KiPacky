@@ -55,6 +55,8 @@ import {
   saveShift,
   deleteShift,
   fetchOrderDetail,
+  fetchAdminUsers,
+  changeAdminPin,
 } from '../api/client';
 import {
   Employee,
@@ -68,6 +70,7 @@ import {
   DocumentConsentItem,
   PlannedShiftItem,
   OrderDetailResult,
+  AdminUserItem,
 } from '../types';
 import { GREENBERG_LOGO } from '../assets/logoBase64';
 import { APP_VERSION } from '../version';
@@ -102,6 +105,13 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
   const [showQrModal, setShowQrModal] = useState(false);
   const currentUrl =
     typeof window !== 'undefined' ? window.location.origin + window.location.pathname : '';
+
+  // Správa administrátorských Master PINů
+  const [showAdminPinModal, setShowAdminPinModal] = useState(false);
+  const [adminUsers, setAdminUsers] = useState<AdminUserItem[]>([]);
+  const [selectedAdminUser, setSelectedAdminUser] = useState<string>('admin');
+  const [newAdminPinVal, setNewAdminPinVal] = useState<string>('');
+  const [loadingAdminUsers, setLoadingAdminUsers] = useState(false);
 
   // ==========================================
   // STAV: DOCHÁZKA (LOGS)
@@ -418,6 +428,41 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
       loadEmployees();
     } catch (err: any) {
       showAlert('error', err.message);
+    }
+  };
+
+  const handleOpenAdminPinModal = async () => {
+    setLoadingAdminUsers(true);
+    setShowAdminPinModal(true);
+    try {
+      const users = await fetchAdminUsers();
+      setAdminUsers(users);
+      if (users.length > 0) {
+        setSelectedAdminUser(users[0].username);
+        setNewAdminPinVal('');
+      }
+    } catch (err: any) {
+      showAlert('error', err.message || 'Nepodařilo se načíst administrátory');
+    } finally {
+      setLoadingAdminUsers(false);
+    }
+  };
+
+  const handleChangeAdminPinSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAdminPinVal || newAdminPinVal.length !== 4) {
+      showAlert('error', 'PIN musí mít přesně 4 číslice.');
+      return;
+    }
+    try {
+      await changeAdminPin(selectedAdminUser, newAdminPinVal);
+      showAlert('success', `PIN pro administrátora ${selectedAdminUser} byl úspěšně změněn na ${newAdminPinVal}.`);
+      setNewAdminPinVal('');
+      const users = await fetchAdminUsers();
+      setAdminUsers(users);
+      setShowAdminPinModal(false);
+    } catch (err: any) {
+      showAlert('error', err.message || 'Nepodařilo se změnit PIN');
     }
   };
 
@@ -1093,14 +1138,25 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                   Přidávejte brigádníky (DPP/DPČ) a zaměstnance (HPP). Každý má svůj unikátní 4místný PIN.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowQrModal(true)}
-                className="px-4 py-2.5 rounded-xl bg-[#193F34] hover:bg-[#285446] text-[#F7F3E9] font-semibold text-sm flex items-center justify-center gap-2 shadow-lg shadow-sky-600/20 transition-all cursor-pointer"
-              >
-                <QrCode className="w-4 h-4" />
-                Vytisknout vchodový QR kód
-              </button>
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleOpenAdminPinModal}
+                  className="px-4 py-2.5 rounded-xl bg-[#285446] hover:bg-[#3E7361] text-[#F7F3E9] font-semibold text-sm flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
+                  title="Správa administrátorských Master PINů pro Martu a Jána"
+                >
+                  <ShieldCheck className="w-4 h-4 text-[#D7BE97]" />
+                  <span>Master PINy správy</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowQrModal(true)}
+                  className="px-4 py-2.5 rounded-xl bg-[#193F34] hover:bg-[#285446] text-[#F7F3E9] font-semibold text-sm flex items-center justify-center gap-2 shadow-lg shadow-sky-600/20 transition-all cursor-pointer"
+                >
+                  <QrCode className="w-4 h-4" />
+                  Vytisknout vchodový QR kód
+                </button>
+              </div>
             </div>
 
             {/* Formulář pro nového zaměstnance */}
@@ -3908,6 +3964,115 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                 </div>
               </div>
             ) : null}
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================== */}
+      {/* MODÁL PRO SPRÁVU A ZMĚNU MASTER PINŮ ADMINISTRÁTORŮ  */}
+      {/* ==================================================== */}
+      {showAdminPinModal && (
+        <div className="fixed inset-0 z-50 bg-[#102E26]/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#FFFFFF] border border-[#E4DDD0] rounded-[24px] max-w-md w-full p-6 shadow-2xl relative text-[#232B28]">
+            <button
+              type="button"
+              onClick={() => setShowAdminPinModal(false)}
+              className="absolute top-5 right-5 p-2 rounded-full bg-[#F7F3E9] text-[#55645B] hover:text-[#193F34] transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-5">
+              <div className="p-3 bg-[#193F34]/10 rounded-2xl text-[#193F34]">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-heading font-extrabold text-[#193F34]">
+                  Správa Master PINů
+                </h3>
+                <p className="text-xs text-[#55645B]">
+                  Změna přihlašovacího PINu pro administrátory
+                </p>
+              </div>
+            </div>
+
+            {loadingAdminUsers ? (
+              <div className="py-8 text-center text-xs text-[#55645B]">Načítám administrátory...</div>
+            ) : (
+              <div>
+                {/* Přehled aktuálních administrátorů */}
+                <div className="bg-[#F7F3E9] p-3.5 rounded-[16px] border border-[#E4DDD0] mb-5 space-y-2">
+                  <span className="text-[11px] font-heading font-bold uppercase tracking-wider text-[#55645B] block mb-1">
+                    Aktuální administrátoři
+                  </span>
+                  {adminUsers.map((u) => (
+                    <div
+                      key={u.id}
+                      className="flex items-center justify-between text-xs bg-white px-3 py-2 rounded-[10px] border border-[#E4DDD0]"
+                    >
+                      <div>
+                        <span className="font-heading font-bold text-[#193F34]">{u.fullName}</span>
+                        <span className="text-[11px] text-[#55645B] ml-1.5 font-mono">({u.username})</span>
+                      </div>
+                      <span className="font-mono font-bold text-[#D7BE97] bg-[#102E26] px-2 py-0.5 rounded-[6px]">
+                        PIN: {u.pinCode}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <form onSubmit={handleChangeAdminPinSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-heading font-bold uppercase tracking-wider text-[#55645B] mb-1">
+                      Vyberte administrátora ke změně
+                    </label>
+                    <select
+                      value={selectedAdminUser}
+                      onChange={(e) => setSelectedAdminUser(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-white border border-[#D6DCD3] rounded-xl text-xs text-[#232B28] font-medium"
+                    >
+                      {adminUsers.map((u) => (
+                        <option key={u.id} value={u.username}>
+                          {u.fullName} ({u.username})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-heading font-bold uppercase tracking-wider text-[#55645B] mb-1">
+                      Nový 4místný PIN
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      maxLength={4}
+                      placeholder="např. 1452"
+                      value={newAdminPinVal}
+                      onChange={(e) => setNewAdminPinVal(e.target.value.replace(/\D/g, ''))}
+                      className="w-full px-3 py-2.5 bg-white border border-[#D6DCD3] rounded-xl text-sm font-mono text-center tracking-widest text-[#193F34] font-extrabold focus:outline-none focus:border-[#193F34]"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="submit"
+                      disabled={newAdminPinVal.length !== 4}
+                      className="flex-1 py-3 rounded-xl bg-[#193F34] hover:bg-[#285446] text-[#F7F3E9] font-heading font-bold text-xs shadow-md transition-all cursor-pointer disabled:opacity-40"
+                    >
+                      Uložit nový PIN
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowAdminPinModal(false)}
+                      className="px-4 py-3 rounded-xl bg-[#F7F3E9] hover:bg-[#EAE4D5] text-[#55645B] font-heading font-semibold text-xs cursor-pointer"
+                    >
+                      Zrušit
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
           </div>
         </div>
       )}
