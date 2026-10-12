@@ -236,12 +236,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
     if (reportData && reportData.summaries) {
       reportData.summaries.forEach((s) => {
         if (s.contractType === 'DPP') {
-          const ytd = s.yearToDateNetHours || 0;
+          const ytd = s.yearToDateNormHours ?? s.yearToDateNetHours ?? 0;
           if (ytd >= 290) {
             list.push({
               id: `dpp_crit_${s.employeeId}`,
               title: `⛔ Kritický stav DPP: ${s.employeeName}`,
-              description: `Brigádník má odpracováno ${ytd.toFixed(1)} h z limitu 300 h ročně! Je nutné okamžitě zastavit přidělování dalších směn.`,
+              description: `Brigádník má odpracováno ${ytd.toFixed(1)} h normočasu z limitu 300 h ročně! Je nutné okamžitě zastavit přidělování dalších směn.`,
               severity: 'critical',
               actionTab: 'reports',
             });
@@ -249,7 +249,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
             list.push({
               id: `dpp_warn_${s.employeeId}`,
               title: `⚠️ Blíží se limitu DPP: ${s.employeeName}`,
-              description: `Odpracováno ${ytd.toFixed(1)} h z limitu 300 h ročně. Zvažte další rozvržení práce.`,
+              description: `Odpracováno ${ytd.toFixed(1)} h normočasu z limitu 300 h ročně. Zvažte další rozvržení práce.`,
               severity: 'warning',
               actionTab: 'reports',
             });
@@ -3142,7 +3142,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
             ) : reportData && reportData.employeeSummaries.length > 0 ? (
               <div className="space-y-6">
                 {reportData.employeeSummaries.map((empSum) => {
-                  const ytd = empSum.yearToDateNetHours || 0;
+                  const ytd = empSum.yearToDateNormHours ?? empSum.yearToDateNetHours ?? 0;
                   const isDpp = empSum.contractType === 'DPP';
                   const dppDanger = isDpp && ytd >= 290;
                   const dppWarning = isDpp && ytd >= 250 && ytd < 290;
@@ -3157,17 +3157,17 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                         <div>
                           <div className="flex items-center gap-2.5 flex-wrap">
                             <h3 className="text-lg font-bold font-heading text-[#193F34]">{empSum.employeeName}</h3>
-                            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#E9E1D2] text-[#193F34] text-[#193F34]">
+                            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#E9E1D2] text-[#193F34]">
                               {empSum.contractType}
                             </span>
                             {isDpp && (
                               <span
                                 className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
                                   dppDanger
-                                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                                    ? 'bg-rose-500/20 text-rose-600 border-rose-500/40'
                                     : dppWarning
-                                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                                      : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                      ? 'bg-amber-500/20 text-amber-700 border-amber-500/40'
+                                      : 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30'
                                 }`}
                               >
                                 {dppDanger
@@ -3178,7 +3178,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                               </span>
                             )}
                             {empSum.incompleteShiftsCount > 0 && (
-                              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-600 border border-amber-500/30">
                                 ⚠️ {empSum.incompleteShiftsCount}× neuzavřená směna
                               </span>
                             )}
@@ -3192,17 +3192,17 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                             </button>
                           </div>
                           <p className="text-xs text-[#4E6157] mt-1">
-                            Odpracováno směn: <strong>{empSum.totalShifts}</strong> • Hrubý čas:{' '}
+                            Odpracováno směn: <strong>{empSum.totalShifts}</strong> • Fyzický hrubý čas:{' '}
                             <strong>{empSum.totalGrossHours.toFixed(2)} h</strong> • Přestávky:{' '}
                             <strong>-{empSum.totalBreakHours.toFixed(2)} h</strong>
                           </p>
                         </div>
 
-                        {/* 4 hlavní KPI metriky (Čas + Kusy + Normohodiny + Výdělek v Kč) */}
+                        {/* 4 hlavní KPI metriky (Fyzický čas + Kusy + Normočas + Výdělek v Kč) */}
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                           <div className="bg-white border border-[#E4DDD0] px-3.5 py-2 rounded-xl text-right">
                             <span className="block text-[10px] uppercase tracking-wider text-[#4E6157]">
-                              Čistý čas (Netto)
+                              Fyzický čas (BOZP)
                             </span>
                             <span className="text-base font-extrabold text-[#193F34] font-mono">
                               {empSum.totalNetHours.toFixed(2)} h
@@ -3213,26 +3213,26 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                             <span className="block text-[10px] uppercase tracking-wider text-[#4E6157]">
                               Schválená výroba
                             </span>
-                            <span className="text-base font-extrabold text-indigo-400 font-mono">
+                            <span className="text-base font-extrabold text-indigo-600 font-mono">
                               {empSum.totalApprovedPieces || 0} ks
                             </span>
                           </div>
 
                           <div className="bg-white border border-[#E4DDD0] px-3.5 py-2 rounded-xl text-right">
                             <span className="block text-[10px] uppercase tracking-wider text-[#4E6157]">
-                              Čas dle normy
+                              Úřední normočas (DPP)
                             </span>
-                            <span className="text-base font-extrabold text-amber-400 font-mono">
-                              {(empSum.totalProductiveHours || 0).toFixed(2)} h
+                            <span className="text-base font-extrabold text-amber-600 font-mono">
+                              {(empSum.totalProductiveHours || empSum.normHours || 0).toFixed(2)} h
                             </span>
                           </div>
 
-                          <div className="bg-emerald-950/40 border border-emerald-500/30 px-3.5 py-2 rounded-xl text-right">
-                            <span className="block text-[10px] uppercase tracking-wider text-emerald-300 flex items-center justify-end gap-1">
-                              <Coins className="w-3 h-3" />
+                          <div className="bg-emerald-950/10 border border-emerald-500/30 px-3.5 py-2 rounded-xl text-right">
+                            <span className="block text-[10px] uppercase tracking-wider text-emerald-800 flex items-center justify-end gap-1">
+                              <Coins className="w-3 h-3 text-emerald-700" />
                               Výdělek v úkole
                             </span>
-                            <span className="text-base font-extrabold text-emerald-400 font-mono">
+                            <span className="text-base font-extrabold text-emerald-700 font-mono">
                               {(empSum.totalEarnedCzk || 0).toFixed(2)} Kč
                             </span>
                           </div>
@@ -3250,9 +3250,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                                 <th className="px-4 py-3">Odchod</th>
                                 <th className="px-4 py-3">Hrubý čas</th>
                                 <th className="px-4 py-3">Přestávka</th>
-                                <th className="px-4 py-3">Čistý čas</th>
+                                <th className="px-4 py-3">Fyzický čistý čas (BOZP)</th>
                                 <th className="px-4 py-3 text-right">Schváleno ks</th>
-                                <th className="px-4 py-3 text-right">Normočas</th>
+                                <th className="px-4 py-3 text-right">Úřední normočas (DPP)</th>
                                 <th className="px-4 py-3 text-right">Výdělek (Kč)</th>
                                 <th className="px-4 py-3">Stav / Poznámka</th>
                               </tr>
@@ -3656,8 +3656,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                 const netStr = `${Math.floor(totNetH)}:${String(Math.round((totNetH % 1) * 60)).padStart(2, '0')}`;
                 const normText =
                   totPcs > 0
-                    ? `${totPcs} ks (${totNormH.toFixed(1)} nh)`
-                    : 'Zatím nehodnoceno';
+                    ? `${totPcs} ks (${totNormH.toFixed(2)} h normoč.)`
+                    : '—';
 
                 return `<tr>
                   <td><strong>${day}. ${reportMonth}.</strong></td>
@@ -3671,6 +3671,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
               })
               .join('');
 
+            const ytdNormVal = card31Employee.yearToDateNormHours ?? 0;
+            const remainingDppVal = card31Employee.remainingDppHours !== undefined 
+              ? card31Employee.remainingDppHours 
+              : Math.max(0, 300 - ytdNormVal);
+
             win.document.write(`
               <html>
                 <head>
@@ -3678,15 +3683,23 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                   <style>
                     body { font-family: Arial, sans-serif; padding: 20px; color: #111; }
                     h1 { font-size: 18px; margin-bottom: 4px; }
-                    p { font-size: 12px; color: #444; margin-top: 0; margin-bottom: 12px; }
+                    p { font-size: 11.5px; color: #333; margin-top: 0; margin-bottom: 12px; line-height: 1.5; }
                     table { width: 100%; border-collapse: collapse; font-size: 11px; }
                     th, td { border: 1px solid #cbd5e1; padding: 4px 8px; text-align: left; }
-                    th { background: #e2e8f0; }
+                    th { background: #e2e8f0; font-weight: bold; }
+                    .num { text-align: right; }
                   </style>
                 </head>
                 <body>
                   <h1>Měsíční docházková tabulka (31 dnů) – ${card31Employee.employeeName} (${card31Employee.contractType})</h1>
-                  <p>Období: ${reportMonth}/${reportYear} | Celkem čistý čas: <strong>${card31Employee.totalNetHours.toFixed(2)} h</strong> | Schválená produkce: <strong>${card31Employee.totalApprovedPieces || 0} ks</strong> | Výdělek: <strong>${(card31Employee.totalEarnedCzk || 0).toFixed(2)} Kč</strong></p>
+                  <p>
+                    Období: <strong>${reportMonth}/${reportYear}</strong> | 
+                    Fyzicky na dílně (BOZP): <strong>${card31Employee.totalNetHours.toFixed(2)} h</strong> | 
+                    Úřední normočas (DPP): <strong>${(card31Employee.totalProductiveHours || card31Employee.normHours || 0).toFixed(2)} h</strong> | 
+                    Roční čerpání DPP (Normočas): <strong>${ytdNormVal.toFixed(1)} / 300 h</strong> (zbývá: <strong>${remainingDppVal.toFixed(1)} h</strong>) | 
+                    Schváleno celkem: <strong>${card31Employee.totalApprovedPieces || 0} ks</strong> | 
+                    Úkolový výdělek: <strong>${(card31Employee.totalEarnedCzk || 0).toFixed(2)} Kč</strong>
+                  </p>
                   <table>
                     <thead>
                       <tr>
@@ -3695,8 +3708,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                         <th>Příchod</th>
                         <th>Přestávka</th>
                         <th>Odchod</th>
-                        <th>Odpracováno</th>
-                        <th>Splnění normy</th>
+                        <th>Fyzický čistý čas (BOZP)</th>
+                        <th>Úřední hodiny (Normočas)</th>
                       </tr>
                     </thead>
                     <tbody>${rowsHtml}</tbody>
@@ -3721,8 +3734,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                       Měsíční docházková tabulka (31 dnů) – {card31Employee.employeeName}
                     </h3>
                     <p className="text-xs text-[#4E6157]">
-                      Období {reportMonth}/{reportYear} • Čistý čas:{' '}
-                      <strong>{card31Employee.totalNetHours.toFixed(2)} h</strong> • Výroba:{' '}
+                      Období {reportMonth}/{reportYear} • Fyzicky na dílně (BOZP):{' '}
+                      <strong>{card31Employee.totalNetHours.toFixed(2)} h</strong> • Úřední normočas (DPP):{' '}
+                      <strong>{(card31Employee.totalProductiveHours || card31Employee.normHours || 0).toFixed(2)} h</strong> • Roční limit DPP:{' '}
+                      <strong>{(card31Employee.yearToDateNormHours ?? 0).toFixed(1)} / 300 h</strong> • Výroba:{' '}
                       <strong>{card31Employee.totalApprovedPieces || 0} ks</strong>
                     </p>
                   </div>
@@ -3754,8 +3769,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                         <th className="px-3 py-2.5">Příchod</th>
                         <th className="px-3 py-2.5">Přestávka</th>
                         <th className="px-3 py-2.5">Odchod</th>
-                        <th className="px-3 py-2.5">Odpracováno</th>
-                        <th className="px-3 py-2.5">Splnění normy</th>
+                        <th className="px-3 py-2.5">Fyzický čas (BOZP)</th>
+                        <th className="px-3 py-2.5">Úřední hodiny (Normočas)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/70">
@@ -3844,11 +3859,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                             </td>
                             <td className="px-3 py-2">
                               {totPcs > 0 ? (
-                                <span className="text-emerald-400 font-semibold">
-                                  {totPcs} ks ({totNormH.toFixed(1)} nh)
+                                <span className="text-[#16634D] font-semibold font-mono">
+                                  {totPcs} ks ({totNormH.toFixed(2)} h normoč.)
                                 </span>
                               ) : (
-                                <span className="text-amber-300/80">Zatím nehodnoceno</span>
+                                <span className="text-[#6C7E74]">—</span>
                               )}
                             </td>
                           </tr>
