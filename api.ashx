@@ -2097,6 +2097,7 @@ ORDER BY e.FullName ASC, op.Name ASC", conn))
                         {
                             { "employeeId", reader.GetInt32(0) },
                             { "employeeName", reader.GetString(1) },
+                            { "fullName", reader.GetString(1) },
                             { "contractType", reader.GetString(2) },
                             { "operationId", reader.GetInt32(3) },
                             { "operationName", reader.GetString(4) },
@@ -2125,8 +2126,11 @@ ORDER BY e.FullName ASC, op.Name ASC", conn))
             { "stats", new Dictionary<string, object>
                 {
                     { "totalPiecesTarget", target },
+                    { "targetPieces", target },
                     { "completedPieces", totalApprovedPieces },
+                    { "totalApprovedPieces", totalApprovedPieces },
                     { "defectPieces", totalDefectPieces },
+                    { "totalDefectPieces", totalDefectPieces },
                     { "remainingPieces", (target > 0 && target > totalApprovedPieces) ? (target - totalApprovedPieces) : 0 },
                     { "percentDone", (target > 0) ? Math.Min(100, Math.Round(((double)totalApprovedPieces / target) * 100, 1)) : 0 },
                     { "totalEarnedCzk", Math.Round(totalEarnedCzk, 2) },

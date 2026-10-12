@@ -4036,19 +4036,22 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                       const ord = selectedOrderDetail.order;
                       const st = selectedOrderDetail.stats;
                       const parts = selectedOrderDetail.participants;
-                      const pct = ord.targetPieces > 0 ? Math.round((st.totalApprovedPieces / ord.targetPieces) * 100) : 0;
+                      const targetPcs = ord.totalPiecesTarget ?? ord.targetPieces ?? 0;
+                      const approvedPcs = st.completedPieces ?? (st as any).totalApprovedPieces ?? 0;
+                      const defectPcs = st.defectPieces ?? (st as any).totalDefectPieces ?? 0;
+                      const pct = targetPcs > 0 ? Math.round((approvedPcs / targetPcs) * 100) : 0;
 
                       const rowsHtml = parts.map((p, i) => `
                         <tr>
                           <td style="text-align:center;">${i + 1}</td>
-                          <td><strong>${p.fullName}</strong></td>
+                          <td><strong>${p.employeeName || (p as any).fullName}</strong></td>
                           <td style="text-align:center;">${p.contractType}</td>
                           <td>${p.operationName}</td>
                           <td style="text-align:right; font-family:monospace;">${p.normPerHour} ks/h</td>
                           <td style="text-align:right; font-family:monospace; font-weight:bold; color:#102E26;">${p.approvedPieces} ks</td>
                           <td style="text-align:right; font-family:monospace; color:#8E4B2F;">${p.defectPieces} ks</td>
-                          <td style="text-align:right; font-family:monospace;">${p.productiveHours.toFixed(2)} h</td>
-                          <td style="text-align:right; font-family:monospace; font-weight:bold;">${p.totalEarnedCzk.toFixed(2)} Kč</td>
+                          <td style="text-align:right; font-family:monospace;">${(p.productiveHours ?? 0).toFixed(2)} h</td>
+                          <td style="text-align:right; font-family:monospace; font-weight:bold;">${(p.totalEarnedCzk ?? 0).toFixed(2)} Kč</td>
                         </tr>
                       `).join('');
 
@@ -4080,7 +4083,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                             <div class="header">
                               <div>
                                 <h1 class="title">VÝROBNÍ A ARCHIVAČNÍ LIST ZAKÁZKY</h1>
-                                <div class="subtitle">Greenberg Nepomuk • Zakázka: <strong>${ord.name}</strong></div>
+                                <div class="subtitle">Greenberg Nepomuk • Zakázka: <strong>${ord.name}</strong>
+                                  ${(ord.startDate || ord.endDate) ? ` • Termín: ${ord.startDate ? new Date(ord.startDate).toLocaleDateString('cs-CZ') : '—'} až ${ord.endDate ? new Date(ord.endDate).toLocaleDateString('cs-CZ') : '—'}` : ''}
+                                  ${ord.targetPricePerPiece ? ` • Cílová cena: ${ord.targetPricePerPiece.toFixed(2)} Kč/ks` : ''}
+                                </div>
                               </div>
                               <div style="text-align:right; font-size:10px; color:#64748b;">
                                 Vygenerováno: ${new Date().toLocaleDateString('cs-CZ')} v ${new Date().toLocaleTimeString('cs-CZ')}<br/>
@@ -4090,23 +4096,23 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
 
                             <div class="kpi-row">
                               <div class="kpi-card">
-                                <div class="kpi-val">${ord.targetPieces || '—'} ks</div>
+                                <div class="kpi-val">${targetPcs > 0 ? targetPcs + ' ks' : '—'}</div>
                                 <div class="kpi-lbl">Cílový plán</div>
                               </div>
                               <div class="kpi-card">
-                                <div class="kpi-val">${st.totalApprovedPieces} ks (${pct}%)</div>
+                                <div class="kpi-val">${approvedPcs} ks (${pct}%)</div>
                                 <div class="kpi-lbl">Vyrobeno schváleno</div>
                               </div>
                               <div class="kpi-card">
-                                <div class="kpi-val" style="color:#8E4B2F;">${st.totalDefectPieces} ks</div>
+                                <div class="kpi-val" style="color:#8E4B2F;">${defectPcs} ks</div>
                                 <div class="kpi-lbl">Zmetky</div>
                               </div>
                               <div class="kpi-card">
-                                <div class="kpi-val">${st.totalProductiveHours.toFixed(2)} h</div>
+                                <div class="kpi-val">${(st.totalProductiveHours ?? 0).toFixed(2)} h</div>
                                 <div class="kpi-lbl">Odpracovaný normočas</div>
                               </div>
                               <div class="kpi-card">
-                                <div class="kpi-val">${st.totalEarnedCzk.toFixed(2)} Kč</div>
+                                <div class="kpi-val">${(st.totalEarnedCzk ?? 0).toFixed(2)} Kč</div>
                                 <div class="kpi-lbl">Mzdové náklady zakázky</div>
                               </div>
                             </div>
@@ -4156,66 +4162,99 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                   </button>
                 </div>
 
-                {/* Progress bar plnění zakázky */}
-                <div className="my-6 bg-[#F7F3E9] p-5 rounded-[16px] border border-[#E4DDD0]">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs font-heading font-bold uppercase tracking-wider text-[#55645B]">
-                      Plnění cíle zakázky
-                    </span>
-                    <span className="font-mono font-bold text-sm text-[#193F34]">
-                      {selectedOrderDetail.stats.totalApprovedPieces} / {selectedOrderDetail.order.targetPieces || 0} ks
-                      {' '}({selectedOrderDetail.order.targetPieces > 0 ? Math.round((selectedOrderDetail.stats.totalApprovedPieces / selectedOrderDetail.order.targetPieces) * 100) : 0}%)
-                    </span>
-                  </div>
-                  <div className="w-full bg-[#E4DDD0] rounded-full h-3 overflow-hidden">
-                    <div
-                      className="h-3 rounded-full bg-[#193F34] transition-all duration-500"
-                      style={{
-                        width: `${selectedOrderDetail.order.targetPieces > 0 ? Math.min(100, Math.round((selectedOrderDetail.stats.totalApprovedPieces / selectedOrderDetail.order.targetPieces) * 100)) : 0}%`,
-                      }}
-                    />
-                  </div>
+                {/* Progress bar plnění zakázky (Fáze 2.2) */}
+                {(() => {
+                  const targetPcs = selectedOrderDetail.order.totalPiecesTarget ?? selectedOrderDetail.order.targetPieces ?? 0;
+                  const approvedPcs = selectedOrderDetail.stats.completedPieces ?? (selectedOrderDetail.stats as any).totalApprovedPieces ?? 0;
+                  const defectPcs = selectedOrderDetail.stats.defectPieces ?? (selectedOrderDetail.stats as any).totalDefectPieces ?? 0;
+                  const pct = targetPcs > 0 ? Math.min(100, Math.round((approvedPcs / targetPcs) * 100)) : 0;
+                  const remainingPcs = targetPcs > 0 ? Math.max(0, targetPcs - approvedPcs) : 0;
 
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-3 border-t border-[#E4DDD0]/80">
-                    <div>
-                      <span className="text-[10px] text-[#55645B] block uppercase tracking-wider">Zbývá vyrobit</span>
-                      <span className="font-mono font-bold text-sm text-[#193F34]">
-                        {Math.max(0, (selectedOrderDetail.order.targetPieces || 0) - selectedOrderDetail.stats.totalApprovedPieces)} ks
-                      </span>
+                  return (
+                    <div className="my-6 bg-[#F7F3E9] p-5 rounded-[16px] border border-[#E4DDD0]">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-xs font-heading font-bold uppercase tracking-wider text-[#55645B]">
+                          Plnění cíle zakázky (Celkový progres)
+                        </span>
+                        <span className="font-mono font-bold text-sm text-[#193F34]">
+                          {approvedPcs} / {targetPcs} ks ({pct}%)
+                        </span>
+                      </div>
+                      <div className="w-full bg-[#E4DDD0] rounded-full h-3 overflow-hidden">
+                        <div
+                          className="h-3 rounded-full bg-[#193F34] transition-all duration-500"
+                          style={{
+                            width: `${pct}%`,
+                          }}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-3 border-t border-[#E4DDD0]/80">
+                        <div>
+                          <span className="text-[10px] text-[#55645B] block uppercase tracking-wider">Zbývá vyrobit</span>
+                          <span className="font-mono font-bold text-sm text-[#193F34]">
+                            {remainingPcs} ks
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-[#55645B] block uppercase tracking-wider">Zmetky celkem</span>
+                          <span className="font-mono font-bold text-sm text-[#8E4B2F]">
+                            {defectPcs} ks
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-[#55645B] block uppercase tracking-wider">Normočas</span>
+                          <span className="font-mono font-bold text-sm text-[#193F34]">
+                            {(selectedOrderDetail.stats.totalProductiveHours ?? 0).toFixed(2)} h
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-[#55645B] block uppercase tracking-wider">Mzdové náklady</span>
+                          <span className="font-mono font-bold text-sm text-[#16634D]">
+                            {(selectedOrderDetail.stats.totalEarnedCzk ?? 0).toFixed(2)} Kč
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-[10px] text-[#55645B] block uppercase tracking-wider">Zmetky celkem</span>
-                      <span className="font-mono font-bold text-sm text-[#8E4B2F]">
-                        {selectedOrderDetail.stats.totalDefectPieces} ks
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-[#55645B] block uppercase tracking-wider">Normočas</span>
-                      <span className="font-mono font-bold text-sm text-[#193F34]">
-                        {selectedOrderDetail.stats.totalProductiveHours.toFixed(2)} h
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-[#55645B] block uppercase tracking-wider">Mzdové náklady</span>
-                      <span className="font-mono font-bold text-sm text-[#16634D]">
-                        {selectedOrderDetail.stats.totalEarnedCzk.toFixed(2)} Kč
-                      </span>
+                  );
+                })()}
+
+                {/* Specifické operace zakázky */}
+                {selectedOrderDetail.operations && selectedOrderDetail.operations.length > 0 && (
+                  <div className="mb-6 bg-white p-4 rounded-[16px] border border-[#E4DDD0]">
+                    <h3 className="text-xs font-heading font-bold text-[#193F34] uppercase tracking-wider mb-2">
+                      Definované výrobní operace této zakázky ({selectedOrderDetail.operations.length})
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedOrderDetail.operations.map((op) => (
+                        <div
+                          key={op.id}
+                          className="bg-[#F7F3E9] border border-[#D6DCD3] px-3 py-1.5 rounded-lg text-xs"
+                        >
+                          <span className="font-bold text-[#193F34] mr-2">{op.name}</span>
+                          <span className="font-mono text-[#55645B] mr-2">Norma: {op.normPerHour} ks/h</span>
+                          <span className="font-mono font-bold text-emerald-700">{op.ratePerPiece.toFixed(2)} Kč/ks</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                </div>
+                )}
 
-                {/* Jmenný rozpad brigádníků */}
-                <h3 className="text-sm font-heading font-bold text-[#193F34] uppercase tracking-wider mb-3">
-                  Pracovníci podílející se na zakázce ({selectedOrderDetail.participants.length})
+                {/* Sestava lidí (Soupis účastníků dle Fáze 2.2) */}
+                <h3 className="text-sm font-heading font-bold text-[#193F34] uppercase tracking-wider mb-3 flex items-center justify-between">
+                  <span>Sestava lidí (Soupis účastníků zakázky)</span>
+                  <span className="text-xs font-normal text-[#55645B]">
+                    Celkem {selectedOrderDetail.participants.length} záznamů
+                  </span>
                 </h3>
                 <div className="border border-[#E4DDD0] rounded-[16px] overflow-hidden max-h-72 overflow-y-auto">
                   <table className="w-full text-left text-xs text-[#232B28]">
                     <thead className="bg-[#F7F3E9] text-[11px] uppercase font-heading font-bold text-[#55645B] border-b border-[#E4DDD0]">
                       <tr>
-                        <th className="px-4 py-2.5">Pracovník</th>
+                        <th className="px-4 py-2.5">Jméno pracovníka</th>
                         <th className="px-4 py-2.5">Úvazek</th>
                         <th className="px-4 py-2.5">Operace</th>
-                        <th className="px-4 py-2.5 text-right">Schváleno ks</th>
+                        <th className="px-4 py-2.5 text-right">Schválené kusy</th>
                         <th className="px-4 py-2.5 text-right">Zmetky</th>
                         <th className="px-4 py-2.5 text-right">Normočas</th>
                         <th className="px-4 py-2.5 text-right">Výdělek</th>
@@ -4231,13 +4270,13 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                       ) : (
                         selectedOrderDetail.participants.map((p, idx) => (
                           <tr key={idx} className="hover:bg-[#F7F3E9]/50">
-                            <td className="px-4 py-2.5 font-bold text-[#193F34]">{p.fullName}</td>
+                            <td className="px-4 py-2.5 font-bold text-[#193F34]">{p.employeeName || (p as any).fullName}</td>
                             <td className="px-4 py-2.5 text-[#55645B]">{p.contractType}</td>
                             <td className="px-4 py-2.5">{p.operationName}</td>
                             <td className="px-4 py-2.5 text-right font-mono font-bold text-[#16634D]">{p.approvedPieces} ks</td>
                             <td className="px-4 py-2.5 text-right font-mono text-[#8E4B2F]">{p.defectPieces} ks</td>
-                            <td className="px-4 py-2.5 text-right font-mono">{p.productiveHours.toFixed(2)} h</td>
-                            <td className="px-4 py-2.5 text-right font-mono font-bold text-[#193F34]">{p.totalEarnedCzk.toFixed(2)} Kč</td>
+                            <td className="px-4 py-2.5 text-right font-mono">{(p.productiveHours ?? 0).toFixed(2)} h</td>
+                            <td className="px-4 py-2.5 text-right font-mono font-bold text-[#193F34]">{(p.totalEarnedCzk ?? 0).toFixed(2)} Kč</td>
                           </tr>
                         ))
                       )}
