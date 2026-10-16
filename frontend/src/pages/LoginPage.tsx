@@ -83,9 +83,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToKi
           <h2 className="text-2xl font-heading font-extrabold text-[#193F34] tracking-tight">
             Kípačky – Správa
           </h2>
-          <p className="text-xs font-sans text-[#55645B] mt-1">
-            Greenberg Nepomuk • Administrační rozhraní v{APP_VERSION}
-          </p>
+          <div className="mt-2 flex items-center justify-center gap-2">
+            <span className="text-xs font-sans text-[#55645B]">Greenberg Nepomuk</span>
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-[#193F34] text-[#D7BE97] shadow-xs">
+              v{APP_VERSION}
+            </span>
+          </div>
         </div>
 
         {/* Přepínač režimu přihlášení */}
@@ -222,6 +225,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToKi
             </button>
           </form>
         )}
+
+        {/* Spodní lišta na přihlašovací kartě */}
+        <div className="mt-6 pt-4 border-t border-[#E4DDD0] flex items-center justify-between text-xs text-[#55645B]">
+          <span>Kípačky • Greenberg</span>
+          <span className="font-mono font-bold text-[#193F34] bg-[#F7F3E9] px-2.5 py-0.5 rounded border border-[#E4DDD0]">
+            v{APP_VERSION}
+          </span>
+        </div>
       </div>
     </div>
   );

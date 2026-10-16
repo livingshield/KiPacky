@@ -921,7 +921,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#285446] text-[#D7BE97] font-semibold tracking-wider">
                   ADMIN & VÝROBA
                 </span>
-                <span className="text-[10px] text-[#C9DDD0]/80 font-mono">v{APP_VERSION}</span>
+                <span className="text-[11px] px-2 py-0.5 rounded bg-[#D7BE97] text-[#193F34] font-mono font-black shadow-xs">
+                  v{APP_VERSION}
+                </span>
               </div>
             </div>
           </div>
@@ -1021,6 +1023,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                 </span>
               )}
             </button>
+
+            <div className="hidden md:flex items-center px-2.5 py-1 rounded-xl bg-[#102E26] border border-[#285446] text-xs font-mono font-bold text-[#D7BE97]">
+              v{APP_VERSION}
+            </div>
 
             <button
               type="button"
@@ -3346,6 +3352,23 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
           </div>
         )}
       </main>
+
+      {/* Zápatí administrace s číslem verze */}
+      <footer className="mt-auto border-t border-[#E4DDD0] bg-white py-4 px-4 sm:px-6 shadow-xs">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-[#55645B]">
+          <div className="flex items-center gap-2">
+            <span className="font-heading font-extrabold text-[#193F34]">Greenberg Nepomuk</span>
+            <span className="text-[#A5B3A8]">•</span>
+            <span>Kípačky – Administrační systém a evidence docházky & výroby</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[#55645B]">Aktuální verze:</span>
+            <span className="font-mono text-xs font-black text-[#193F34] bg-[#F7F3E9] border border-[#D7BE97] px-2.5 py-0.5 rounded-md shadow-2xs">
+              v{APP_VERSION}
+            </span>
+          </div>
+        </div>
+      </footer>
 
       {/* ==================================================== */}
       {/* MODÁL PRO QR KÓD & SYMBOL DNE (TISK PRO VCHOD)       */}
