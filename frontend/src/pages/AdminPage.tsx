@@ -921,9 +921,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#285446] text-[#D7BE97] font-semibold tracking-wider">
                   ADMIN & VÝROBA
                 </span>
-                <span className="text-[11px] px-2 py-0.5 rounded bg-[#D7BE97] text-[#193F34] font-mono font-black shadow-xs">
-                  v{APP_VERSION}
-                </span>
               </div>
             </div>
           </div>
@@ -1023,10 +1020,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                 </span>
               )}
             </button>
-
-            <div className="hidden md:flex items-center px-2.5 py-1 rounded-xl bg-[#102E26] border border-[#285446] text-xs font-mono font-bold text-[#D7BE97]">
-              v{APP_VERSION}
-            </div>
 
             <button
               type="button"
