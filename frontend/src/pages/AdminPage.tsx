@@ -1873,7 +1873,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                   onChange={(e) => {
                     setProdFilterStatus(e.target.value);
                   }}
-                  className="px-3 py-2 bg-white border border-[#E4DDD0] rounded-xl text-xs text-white"
+                  className="px-3 py-2 bg-white border border-[#E4DDD0] rounded-xl text-xs text-[#232B28]"
                 >
                   <option value="">Všechny záznamy produkce</option>
                   <option value="Pending">Pouze čekající na schválení</option>
@@ -2630,7 +2630,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                       required
                       value={shiftDate}
                       onChange={(e) => setShiftDate(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-white cursor-pointer"
+                      className="w-full px-3 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-[#232B28] cursor-pointer"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -2641,7 +2641,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                         required
                         value={shiftStart}
                         onChange={(e) => setShiftStart(e.target.value)}
-                        className="w-full px-2.5 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-white font-mono cursor-pointer"
+                        className="w-full px-2.5 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-[#232B28] font-mono cursor-pointer"
                       />
                     </div>
                     <div>
@@ -2651,7 +2651,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                         required
                         value={shiftEnd}
                         onChange={(e) => setShiftEnd(e.target.value)}
-                        className="w-full px-2.5 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-white font-mono cursor-pointer"
+                        className="w-full px-2.5 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-[#232B28] font-mono cursor-pointer"
                       />
                     </div>
                   </div>
@@ -2660,7 +2660,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                     <select
                       value={shiftEmpId}
                       onChange={(e) => setShiftEmpId(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-white"
+                      className="w-full px-3 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-[#232B28]"
                     >
                       <option value="">-- Volná směna (Burza směn) --</option>
                       {employees
@@ -2677,7 +2677,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                     <select
                       value={shiftOrderId}
                       onChange={(e) => setShiftOrderId(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-white"
+                      className="w-full px-3 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-[#232B28]"
                     >
                       <option value="">-- Bez konkrétní zakázky --</option>
                       {orders
@@ -2692,10 +2692,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                   <div className="sm:col-span-2 flex gap-2">
                     <input
                       type="text"
-                      placeholder="Poznámka ke směně (volitelné)"
+                      placeholder="Poznámka ke směně / funkce (např. Lepení, Sestavení)"
                       value={shiftNote}
                       onChange={(e) => setShiftNote(e.target.value)}
-                      className="flex-1 px-3 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-white placeholder-[#8B9B90]"
+                      className="flex-1 px-3 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-[#232B28] placeholder-[#8B9B90]"
                     />
                     <button
                       type="submit"
@@ -2788,7 +2788,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                       placeholder="např. BOZP – Bezpečnost práce a ochrana zdraví"
                       value={newDocTitle}
                       onChange={(e) => setNewDocTitle(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="w-full px-3 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-[#232B28] focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     />
                   </div>
 
@@ -2801,7 +2801,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                       placeholder="Stručný výtah nejdůležitějších povinností..."
                       value={newDocShortText}
                       onChange={(e) => setNewDocShortText(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="w-full px-3 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-[#232B28] focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     />
                   </div>
 
@@ -2814,7 +2814,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                       placeholder="Vložte kompletní paragrafy a plné znění směrnice..."
                       value={newDocFullText}
                       onChange={(e) => setNewDocFullText(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-white font-mono focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="w-full px-3 py-2 bg-white border border-[#D6DCD3] rounded-xl text-xs text-[#232B28] font-mono focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     />
                   </div>
 
