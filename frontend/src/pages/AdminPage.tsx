@@ -1247,7 +1247,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                           className={`w-full px-4 py-2.5 bg-white border border-[#D6DCD3] rounded-xl text-sm font-mono text-[#232B28] focus:outline-none focus:ring-2 ${
                             duplicateCreateEmp
                               ? 'border-rose-500 text-rose-300 focus:ring-rose-500'
-                              : 'border-[#E4DDD0] text-white placeholder-[#8B9B90] focus:ring-sky-500'
+                              : 'border-[#E4DDD0] text-[#232B28] placeholder-[#8B9B90] focus:ring-sky-500'
                           }`}
                         />
                       </div>
@@ -1377,7 +1377,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                       const isEditing = editingEmp?.id === emp.id;
                       return (
                         <tr key={emp.id} className="hover:bg-[#E9E1D2] transition-colors">
-                          <td className="px-5 py-4 font-medium text-white">
+                          <td className="px-5 py-4 font-bold text-[#193F34]">
                             {isEditing ? (
                               <input
                                 type="text"
@@ -1709,7 +1709,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                 <button
                   type="button"
                   onClick={loadLogs}
-                  className="w-full py-2 bg-[#E9E1D2] text-[#193F34] hover:bg-slate-700 text-white rounded-xl text-sm font-semibold transition-colors cursor-pointer"
+                  className="w-full py-2 bg-[#E9E1D2] hover:bg-[#D7BE97] text-[#193F34] rounded-xl text-sm font-semibold transition-colors cursor-pointer"
                 >
                   Filtrovat
                 </button>
@@ -1750,9 +1750,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
 
                       return (
                         <tr key={log.id} className="hover:bg-[#E9E1D2] transition-colors">
-                          <td className="px-5 py-3.5 font-medium text-white">
+                          <td className="px-5 py-3.5 font-bold text-[#193F34]">
                             {log.employeeName}
-                            <span className="ml-2 text-xs text-[#6C7E74]">
+                            <span className="ml-2 text-xs font-normal text-[#4E6157]">
                               ({log.contractType})
                             </span>
                           </td>
@@ -1761,7 +1761,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                               <Calendar className="w-3.5 h-3.5 text-[#193F34]" />
                               {dateObj.toLocaleDateString('cs-CZ')}
                             </span>
-                            <span className="inline-flex items-center gap-1 font-bold text-white ml-2 bg-[#E9E1D2] text-[#193F34]/80 px-2 py-0.5 rounded border border-[#D6DCD3]/50">
+                            <span className="inline-flex items-center gap-1 font-bold text-[#193F34] ml-2 bg-[#E9E1D2] px-2 py-0.5 rounded border border-[#D6DCD3]/50">
                               <Clock className="w-3 h-3 text-amber-400" />
                               {dateObj.toLocaleTimeString('cs-CZ', {
                                 hour: '2-digit',
@@ -1873,11 +1873,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                   onChange={(e) => {
                     setProdFilterStatus(e.target.value);
                   }}
-                  className="px-3 py-2 bg-white border border-[#E4DDD0] rounded-xl text-xs text-[#232B28]"
+                  className="px-3 py-2 bg-white border border-[#E4DDD0] rounded-xl text-xs text-[#232B28] font-medium"
                 >
-                  <option value="">Všechny záznamy produkce</option>
-                  <option value="Pending">Pouze čekající na schválení</option>
-                  <option value="Approved">Pouze schválené</option>
+                  <option value="" className="text-[#232B28] bg-white">Všechny záznamy produkce</option>
+                  <option value="Pending" className="text-[#232B28] bg-white">Pouze čekající na schválení</option>
+                  <option value="Approved" className="text-[#232B28] bg-white">Pouze schválené</option>
                 </select>
                 <button
                   type="button"
@@ -1893,12 +1893,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
             <div className="bg-white border border-[#E4DDD0] rounded-2xl shadow-admin-card overflow-hidden shadow-sm">
               <div className="px-5 py-4 border-b border-[#E4DDD0] flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <PackageCheck className="w-5 h-5 text-indigo-400" />
+                  <PackageCheck className="w-5 h-5 text-indigo-600" />
                   <h2 className="text-base font-bold font-heading text-[#193F34]">
                     Odevzdaná produkce brigádníků ({productionLogs.length})
                   </h2>
                 </div>
-                {loadingProduction && <span className="text-xs text-indigo-400">Načítám...</span>}
+                {loadingProduction && <span className="text-xs text-indigo-600">Načítám...</span>}
               </div>
 
               <div className="overflow-x-auto">
@@ -1938,11 +1938,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                           <tr
                             key={p.id}
                             className={`transition-colors ${
-                              isPending ? 'bg-indigo-950/20 hover:bg-indigo-950/30' : 'hover:bg-[#E9E1D2]'
+                              isPending ? 'bg-amber-500/10 hover:bg-amber-500/15' : 'hover:bg-[#E9E1D2]'
                             }`}
                           >
                             <td className="px-4 py-3.5">
-                              <div className="font-bold text-white">{p.employeeName}</div>
+                              <div className="font-bold text-[#193F34]">{p.employeeName}</div>
                               <div className="text-xs text-[#4E6157] font-mono">
                                 {new Date(p.date).toLocaleDateString('cs-CZ')}{' '}
                                 {new Date(p.date).toLocaleTimeString('cs-CZ', {
@@ -1952,7 +1952,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                               </div>
                             </td>
                             <td className="px-4 py-3.5">
-                              <div className="font-semibold text-indigo-300 text-xs">
+                              <div className="font-semibold text-indigo-700 text-xs">
                                 {p.orderName}
                               </div>
                               <div className="text-xs text-[#3E4F46]">
@@ -2716,7 +2716,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                     shifts.map((s) => (
                       <div key={s.id} className="py-2.5 flex items-center justify-between text-xs">
                         <div>
-                          <span className="font-bold text-white">
+                          <span className="font-bold text-[#193F34]">
                             {new Date(s.shiftDate).toLocaleDateString('cs-CZ', {
                               weekday: 'short',
                               day: 'numeric',
@@ -2842,7 +2842,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                     <div key={d.id} className="py-3 flex items-start justify-between gap-3 text-xs">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-white truncate">{d.title}</span>
+                          <span className="font-bold text-[#193F34] truncate">{d.title}</span>
                           <span className="text-[10px] text-[#6C7E74] font-mono">#{d.id}</span>
                         </div>
                         <div className="text-[#4E6157] text-[11px] line-clamp-2 mt-1">
@@ -2991,7 +2991,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                     `);
                     win.document.close();
                   }}
-                  className="px-4 py-2 bg-[#E9E1D2] text-[#193F34] hover:bg-slate-700 text-white rounded-xl text-xs font-semibold flex items-center gap-2 cursor-pointer shadow-sm transition-all"
+                  className="px-4 py-2 bg-[#E9E1D2] hover:bg-[#D7BE97] text-[#193F34] rounded-xl text-xs font-semibold flex items-center gap-2 cursor-pointer shadow-sm transition-all"
                 >
                   <Printer className="w-4 h-4 text-[#193F34]" />
                   Vytisknout úřední arch BOZP (A4)
@@ -3018,7 +3018,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                     ) : (
                       consents.map((c) => (
                         <tr key={c.id} className="hover:bg-[#E9E1D2]">
-                          <td className="px-5 py-3 font-bold text-white">{c.employeeName}</td>
+                          <td className="px-5 py-3 font-bold text-[#193F34]">{c.employeeName}</td>
                           <td className="px-5 py-3 text-xs">{c.contractType}</td>
                           <td className="px-5 py-3 text-emerald-300 font-medium">
                             {c.documentTitle}
@@ -3060,7 +3060,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="px-3.5 py-2.5 rounded-xl bg-[#E9E1D2] text-[#193F34] hover:bg-slate-700 text-white font-semibold text-sm flex items-center gap-2 cursor-pointer"
+                  className="px-3.5 py-2.5 rounded-xl bg-[#E9E1D2] hover:bg-[#D7BE97] text-[#193F34] font-semibold text-sm flex items-center gap-2 cursor-pointer shadow-sm transition-all"
                 >
                   <Printer className="w-4 h-4 text-[#193F34]" />
                   Tisk
@@ -3274,7 +3274,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                                         : 'hover:bg-[#E9E1D2]/30'
                                     }
                                   >
-                                    <td className="px-4 py-3 font-medium text-white">
+                                    <td className="px-4 py-3 font-medium text-[#193F34]">
                                       {inDate.toLocaleDateString('cs-CZ')}
                                     </td>
                                     <td className="px-4 py-3 font-mono text-emerald-400">
@@ -3847,7 +3847,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
 
                         return (
                           <tr key={day} className="bg-[#E9E1D2] text-[#193F34]/30 hover:bg-[#E9E1D2]">
-                            <td className="px-3 py-2 font-mono font-bold text-white">
+                            <td className="px-3 py-2 font-mono font-bold text-[#193F34]">
                               {day}. {reportMonth}.
                             </td>
                             <td className="px-3 py-2 capitalize text-[#232B28]">{dayName}</td>
