@@ -82,7 +82,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 .kiosk-emerald-bg {
   position: fixed;
   inset: 0;
-  z-index: 0;
+  z-index: -10;
   background-color: #102E26;
   background-size: cover;
   background-position: center center;
@@ -110,7 +110,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 .beige-watercolor-bg {
   position: fixed;
   inset: 0;
-  z-index: 0;
+  z-index: -10;
   background-color: #F7F3E9;
   background-size: cover;
   background-position: center center;

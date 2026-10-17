@@ -63,7 +63,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onBackToKi
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-transparent text-[#232B28]">
+    <div className="relative z-10 min-h-screen flex items-center justify-center p-4 bg-transparent text-[#232B28]">
       <div className="w-full max-w-md bg-[#FFFFFF] border border-[#E4DDD0] rounded-[20px] p-8 shadow-admin-card">
         <button
           type="button"

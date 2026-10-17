@@ -1,4 +1,4 @@
 // Centrální správa verze aplikace Kípačky
 // Při každém nasazení se číslo verze inkrementuje
-export const APP_VERSION = '1.1.7';
+export const APP_VERSION = '1.1.8';
 export const APP_BUILD_DATE = '17. 10. 2026';

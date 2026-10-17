@@ -54,18 +54,20 @@ export const App: React.FC = () => {
       {/* Béžové akvarelové pozadí pro světlé rozhraní (správa, přihlášení, směrnice) */}
       {!isDark && <div className="beige-watercolor-bg" />}
       {view === 'document' && viewerDocId && (
-        <DocumentViewerPage
-          documentId={viewerDocId}
-          onBack={() => {
-            // Odebrat parametr z URL a vrátit se na kiosek
-            window.history.pushState({}, '', window.location.pathname);
-            setView('kiosk');
-          }}
-        />
+        <div className="relative z-10">
+          <DocumentViewerPage
+            documentId={viewerDocId}
+            onBack={() => {
+              // Odebrat parametr z URL a vrátit se na kiosek
+              window.history.pushState({}, '', window.location.pathname);
+              setView('kiosk');
+            }}
+          />
+        </div>
       )}
 
       {view === 'kiosk' && (
-        <div className="relative min-h-screen flex flex-col justify-between">
+        <div className="relative z-10 min-h-screen flex flex-col justify-between">
           {/* Smaragdové pozadí: krajina v mlze (mobil) a horské údolí v mlze (PC) */}
           <div className="kiosk-emerald-bg" />
           <KioskPage />
@@ -82,17 +84,21 @@ export const App: React.FC = () => {
       )}
 
       {view === 'login' && (
-        <LoginPage
-          onLoginSuccess={handleLoginSuccess}
-          onBackToKiosk={() => setView('kiosk')}
-        />
+        <div className="relative z-10 min-h-screen">
+          <LoginPage
+            onLoginSuccess={handleLoginSuccess}
+            onBackToKiosk={() => setView('kiosk')}
+          />
+        </div>
       )}
 
       {view === 'admin' && (
-        <AdminPage
-          onLogout={handleLogout}
-          onGoToKiosk={() => setView('kiosk')}
-        />
+        <div className="relative z-10 min-h-screen">
+          <AdminPage
+            onLogout={handleLogout}
+            onGoToKiosk={() => setView('kiosk')}
+          />
+        </div>
       )}
     </div>
   );
