@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import {
   Users,
   CalendarCheck,
@@ -1519,7 +1519,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                             ) : (
                               <div>
                                 {emp.bankAccount ? (
-                                  <div className="font-mono font-bold text-emerald-400">
+                                  <div className="font-mono font-bold text-[#193F34]">
                                     {emp.bankAccount}
                                     {emp.personalDataConfirmedAt && (
                                       <span className="ml-1 text-[10px] text-[#4E6157] font-normal">
@@ -1528,7 +1528,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
                                     )}
                                   </div>
                                 ) : (
-                                  <div className="text-amber-400/80 italic text-[11px]">
+                                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#A53F4E]/15 border border-[#A53F4E]/40 text-[#A53F4E] font-bold text-xs shadow-2xs">
                                     ⚠️ Chybí číslo účtu
                                   </div>
                                 )}
