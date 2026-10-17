@@ -50,7 +50,7 @@ if ($cfg -and $cfg.ConnectionStrings.ProductionConnection) {
     $apiContent = $apiContent.Replace("Server=YOUR_SERVER;Database=YOUR_DATABASE;User Id=YOUR_USER;Password=YOUR_PASSWORD;Encrypt=False", $cfg.ConnectionStrings.ProductionConnection)
 }
 $tempApi = [System.IO.Path]::GetTempFileName()
-[System.IO.File]::WriteAllText($tempApi, $apiContent, (New-Object System.Text.UTF8Encoding($false)))
+[System.IO.File]::WriteAllText($tempApi, $apiContent, (New-Object System.Text.UTF8Encoding($true)))
 Upload-File $tempApi "api.ashx"
 Remove-Item $tempApi -Force -ErrorAction SilentlyContinue
 

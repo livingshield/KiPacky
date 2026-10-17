@@ -1,4 +1,4 @@
-<%@ WebHandler Language="C#" Class="KipackyApiHandler" %>
+﻿<%@ WebHandler Language="C#" Class="KipackyApiHandler" %>
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -21,6 +21,8 @@ public class KipackyApiHandler : IHttpHandler
     public void ProcessRequest(HttpContext context)
     {
         context.Response.TrySkipIisCustomErrors = true;
+        context.Response.ContentEncoding = Encoding.UTF8;
+        context.Response.Charset = "utf-8";
         context.Response.Headers.Add("Access-Control-Allow-Origin", "*");
         context.Response.Headers.Add("Access-Control-Allow-Headers", "Content-Type, X-Kipacky-Auth");
         context.Response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -3210,6 +3212,8 @@ ORDER BY p.[Date] ASC";
     private void SendJson(HttpContext context, object data, int statusCode = 200)
     {
         context.Response.ContentType = "application/json; charset=utf-8";
+        context.Response.ContentEncoding = Encoding.UTF8;
+        context.Response.Charset = "utf-8";
         context.Response.StatusCode = statusCode;
         string json = _json.Serialize(data);
         byte[] bytes = Encoding.UTF8.GetBytes(json);
