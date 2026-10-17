@@ -48,28 +48,24 @@ export const App: React.FC = () => {
   return (
     <div
       className={`min-h-screen font-sans selection:bg-[#D7BE97] selection:text-[#193F34] ${
-        isDark ? 'text-[#F7F3E9] theme-dark' : 'text-[#232B28] theme-light'
+        isDark
+          ? 'bg-kiosk-emerald text-[#F7F3E9] theme-dark'
+          : 'bg-admin-watercolor text-[#232B28] theme-light'
       }`}
     >
-      {/* Béžové akvarelové pozadí pro světlé rozhraní (správa, přihlášení, směrnice) */}
-      {!isDark && <div className="beige-watercolor-bg" />}
       {view === 'document' && viewerDocId && (
-        <div className="relative z-10">
-          <DocumentViewerPage
-            documentId={viewerDocId}
-            onBack={() => {
-              // Odebrat parametr z URL a vrátit se na kiosek
-              window.history.pushState({}, '', window.location.pathname);
-              setView('kiosk');
-            }}
-          />
-        </div>
+        <DocumentViewerPage
+          documentId={viewerDocId}
+          onBack={() => {
+            // Odebrat parametr z URL a vrátit se na kiosek
+            window.history.pushState({}, '', window.location.pathname);
+            setView('kiosk');
+          }}
+        />
       )}
 
       {view === 'kiosk' && (
-        <div className="relative z-10 min-h-screen flex flex-col justify-between">
-          {/* Smaragdové pozadí: krajina v mlze (mobil) a horské údolí v mlze (PC) */}
-          <div className="kiosk-emerald-bg" />
+        <div className="relative min-h-screen flex flex-col justify-between">
           <KioskPage />
           {/* Nenápadné tlačítko pro vstup do administrace v pravém dolním rohu */}
           <button
@@ -84,21 +80,17 @@ export const App: React.FC = () => {
       )}
 
       {view === 'login' && (
-        <div className="relative z-10 min-h-screen">
-          <LoginPage
-            onLoginSuccess={handleLoginSuccess}
-            onBackToKiosk={() => setView('kiosk')}
-          />
-        </div>
+        <LoginPage
+          onLoginSuccess={handleLoginSuccess}
+          onBackToKiosk={() => setView('kiosk')}
+        />
       )}
 
       {view === 'admin' && (
-        <div className="relative z-10 min-h-screen">
-          <AdminPage
-            onLogout={handleLogout}
-            onGoToKiosk={() => setView('kiosk')}
-          />
-        </div>
+        <AdminPage
+          onLogout={handleLogout}
+          onGoToKiosk={() => setView('kiosk')}
+        />
       )}
     </div>
   );

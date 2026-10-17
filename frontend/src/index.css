@@ -76,60 +76,64 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   }
 }
 
+html, body {
+  min-height: 100%;
+  background-color: #102E26;
+}
+
 /* ======================================================== */
 /* Smaragdové pozadí: krajina na výšku (mobil), údolí na šířku (PC) */
 /* ======================================================== */
-.kiosk-emerald-bg {
-  position: fixed;
-  inset: 0;
-  z-index: -10;
+.bg-kiosk-emerald {
   background-color: #102E26;
   background-size: cover;
   background-position: center center;
   background-repeat: no-repeat;
-  pointer-events: none;
+  background-attachment: fixed;
 }
 
 /* Na výšku / mobilní aplikace: Smaragdová krajina v mlze */
 @media (orientation: portrait), (max-width: 640px) {
-  .kiosk-emerald-bg {
+  .bg-kiosk-emerald {
     background-image: url('./assets/bg-portrait.png');
+    background-attachment: scroll;
   }
 }
 
 /* Na šířku / PC a notebooky: Smaragdové horské údolí v mlze */
 @media (orientation: landscape) and (min-width: 641px) {
-  .kiosk-emerald-bg {
+  .bg-kiosk-emerald {
     background-image: url('./assets/bg-landscape.png');
+    background-attachment: fixed;
   }
 }
 
 /* ======================================================== */
 /* Béžové pozadí: akvarelová krajina s mlhou (mobil), s listy (PC) */
 /* ======================================================== */
-.beige-watercolor-bg {
-  position: fixed;
-  inset: 0;
-  z-index: -10;
+.bg-admin-watercolor {
   background-color: #F7F3E9;
   background-size: cover;
   background-position: center center;
   background-repeat: no-repeat;
-  pointer-events: none;
+  background-attachment: fixed;
 }
 
 /* Na výšku / mobilní aplikace: Minimalistická akvarelová krajina s mlhou */
 @media (orientation: portrait), (max-width: 640px) {
-  .beige-watercolor-bg {
+  .bg-admin-watercolor {
     background-image: url('./assets/bg-beige-portrait.png');
+    background-attachment: scroll;
   }
 }
 
 /* Na šířku / PC a notebooky: Minimalistická akvarelová krajina s listy */
 @media (orientation: landscape) and (min-width: 641px) {
-  .beige-watercolor-bg {
+  .bg-admin-watercolor {
     background-image: url('./assets/bg-beige-landscape.png');
+    background-attachment: fixed;
   }
 }
+
 
 
