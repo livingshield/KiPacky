@@ -63,13 +63,15 @@ export const App: React.FC = () => {
       )}
 
       {view === 'kiosk' && (
-        <div className="relative min-h-screen">
+        <div className="relative min-h-screen flex flex-col justify-between">
+          {/* Smaragdové pozadí: krajina v mlze (mobil) a horské údolí v mlze (PC) */}
+          <div className="kiosk-emerald-bg" />
           <KioskPage />
           {/* Nenápadné tlačítko pro vstup do administrace v pravém dolním rohu */}
           <button
             type="button"
             onClick={handleOpenAdmin}
-            className="fixed bottom-3 right-3 p-2.5 rounded-full bg-[#193F34]/80 hover:bg-[#285446] text-[#C9DDD0] hover:text-[#D7BE97] border border-[#426456]/60 transition-all cursor-pointer shadow-sm z-40"
+            className="fixed bottom-3 right-3 p-2.5 rounded-full bg-[#193F34]/80 hover:bg-[#285446] text-[#C9DDD0] hover:text-[#D7BE97] border border-[#426456]/60 transition-all cursor-pointer shadow-sm z-40 backdrop-blur-xs"
             title="Administrace"
           >
             <Lock className="w-4 h-4" />

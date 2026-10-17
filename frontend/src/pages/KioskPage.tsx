@@ -378,7 +378,7 @@ export const KioskPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-between py-3 px-3 sm:py-4 sm:px-4 bg-[#102E26] text-[#F7F3E9] max-w-[460px] mx-auto w-full">
+    <div className="min-h-screen sm:min-h-[calc(100vh-3rem)] sm:my-6 flex flex-col justify-between py-3 px-3 sm:py-6 sm:px-6 text-[#F7F3E9] max-w-[460px] mx-auto w-full sm:bg-[#102E26]/75 sm:backdrop-blur-md sm:rounded-[24px] sm:border sm:border-[#426456]/40 sm:shadow-2xl">
       {/* Toast notifikace o synchronizaci */}
       {syncToast && (
         <div className="w-full mb-3 bg-[#16634D] text-[#F7F3E9] font-heading font-bold py-2.5 px-4 rounded-[14px] shadow-xl flex items-center justify-between text-sm z-50 border border-[#34C790]/40">
@@ -515,14 +515,14 @@ export const KioskPage: React.FC = () => {
       </div>
 
       {/* Spodní zápatí kiosku */}
-      <div className="text-center text-xs text-[#55645B] w-full pt-2 pb-1 flex items-center justify-between">
+      <div className="text-center text-xs text-[#C9DDD0]/80 w-full pt-2 pb-1 flex items-center justify-between">
         <span>Kípačky • Greenberg</span>
         {statusData && (
           <span className="text-[11px] text-[#C9DDD0]">
             Odhlášení za <strong className="text-[#D7BE97]">{secondsLeft} s</strong>
           </span>
         )}
-        <span>v{APP_VERSION} Nepomuk</span>
+        <span className="font-mono text-[11px] text-[#D7BE97]/90 font-semibold">v{APP_VERSION} Nepomuk</span>
       </div>
     </div>
   );

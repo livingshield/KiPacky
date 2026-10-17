@@ -75,3 +75,32 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ======================================================== */
+/* Smaragdové pozadí: krajina na výšku (mobil), údolí na šířku (PC) */
+/* ======================================================== */
+.kiosk-emerald-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-color: #102E26;
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
+/* Na výšku / mobilní aplikace: Smaragdová krajina v mlze */
+@media (orientation: portrait), (max-width: 640px) {
+  .kiosk-emerald-bg {
+    background-image: url('./assets/bg-portrait.png');
+  }
+}
+
+/* Na šířku / PC a notebooky: Smaragdové horské údolí v mlze */
+@media (orientation: landscape) and (min-width: 641px) {
+  .kiosk-emerald-bg {
+    background-image: url('./assets/bg-landscape.png');
+  }
+}
+
