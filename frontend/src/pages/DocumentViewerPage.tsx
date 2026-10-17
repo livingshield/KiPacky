@@ -31,7 +31,7 @@ export const DocumentViewerPage: React.FC<DocumentViewerPageProps> = ({
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#F7F3E9] text-[#232B28] flex items-center justify-center p-6">
+      <div className="min-h-screen bg-transparent text-[#232B28] flex items-center justify-center p-6">
         <div className="text-center">
           <div className="w-8 h-8 border-3 border-[#193F34] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
           <p className="text-sm text-[#4E6157]">Načítám plné znění směrnice...</p>
@@ -42,7 +42,7 @@ export const DocumentViewerPage: React.FC<DocumentViewerPageProps> = ({
 
   if (error || !doc) {
     return (
-      <div className="min-h-screen bg-[#F7F3E9] text-[#232B28] flex items-center justify-center p-6">
+      <div className="min-h-screen bg-transparent text-[#232B28] flex items-center justify-center p-6">
         <div className="max-w-md w-full text-center bg-white border border-[#E4DDD0] p-6 rounded-2xl shadow-admin-card">
           <div className="w-12 h-12 bg-[#FEE2E2] text-[#991B1B] rounded-full flex items-center justify-center mx-auto mb-3 font-bold text-xl">
             !
@@ -76,7 +76,7 @@ export const DocumentViewerPage: React.FC<DocumentViewerPageProps> = ({
   const paragraphs = fullTextToRender.split(/\r?\n\r?\n|\r?\n(?=[0-9]+\.)/);
 
   return (
-    <div className="min-h-screen bg-[#F7F3E9] print:bg-white text-[#232B28] py-6 px-4 sm:px-6">
+    <div className="min-h-screen bg-transparent print:bg-white text-[#232B28] py-6 px-4 sm:px-6">
       {/* Tiskový a navigační panel (skrytý při tisku) */}
       <div className="max-w-3xl mx-auto mb-6 flex items-center justify-between gap-3 print:hidden">
         <div>

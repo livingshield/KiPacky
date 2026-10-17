@@ -48,9 +48,11 @@ export const App: React.FC = () => {
   return (
     <div
       className={`min-h-screen font-sans selection:bg-[#D7BE97] selection:text-[#193F34] ${
-        isDark ? 'bg-[#102E26] text-[#F7F3E9] theme-dark' : 'bg-[#F7F3E9] text-[#232B28] theme-light'
+        isDark ? 'text-[#F7F3E9] theme-dark' : 'text-[#232B28] theme-light'
       }`}
     >
+      {/* Béžové akvarelové pozadí pro světlé rozhraní (správa, přihlášení, směrnice) */}
+      {!isDark && <div className="beige-watercolor-bg" />}
       {view === 'document' && viewerDocId && (
         <DocumentViewerPage
           documentId={viewerDocId}

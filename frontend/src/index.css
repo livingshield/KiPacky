@@ -104,3 +104,32 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   }
 }
 
+/* ======================================================== */
+/* Béžové pozadí: akvarelová krajina s mlhou (mobil), s listy (PC) */
+/* ======================================================== */
+.beige-watercolor-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-color: #F7F3E9;
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
+/* Na výšku / mobilní aplikace: Minimalistická akvarelová krajina s mlhou */
+@media (orientation: portrait), (max-width: 640px) {
+  .beige-watercolor-bg {
+    background-image: url('./assets/bg-beige-portrait.png');
+  }
+}
+
+/* Na šířku / PC a notebooky: Minimalistická akvarelová krajina s listy */
+@media (orientation: landscape) and (min-width: 641px) {
+  .beige-watercolor-bg {
+    background-image: url('./assets/bg-beige-landscape.png');
+  }
+}
+
+

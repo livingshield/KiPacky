@@ -903,7 +903,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
   const pendingProdCount = productionLogs.filter((p) => p.status === 'Pending').length;
 
   return (
-    <div className="min-h-screen bg-[#F7F3E9] text-[#232B28] flex flex-col font-sans">
+    <div className="min-h-screen bg-transparent text-[#232B28] flex flex-col font-sans">
       {/* Horní navigační lišta */}
       <header className="bg-[#193F34] border-b border-[#285446] sticky top-0 z-30 shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-3">
