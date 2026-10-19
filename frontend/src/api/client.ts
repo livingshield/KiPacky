@@ -458,7 +458,14 @@ export async function saveOrder(data: {
   deadline?: string;
   targetPricePerPiece?: number;
   description?: string;
-  operations?: Array<{ name: string; normPerHour: number; ratePerPiece: number }>;
+  minTargetPieces?: number | null;
+  maxTargetPieces?: number | null;
+  packagingDesc?: string;
+  logisticsDesc?: string;
+  coordinatorContact?: string;
+  customerContact?: string;
+  workplaceMode?: string;
+  operations?: Array<{ name: string; normPerHour: number; ratePerPiece: number; operationStage?: string }>;
 }): Promise<{ success: boolean; id: number }> {
   const res = await fetch(`${API_BASE}?action=save-order`, {
     method: 'POST',
@@ -489,6 +496,7 @@ export async function saveOperation(data: {
   ratePerPiece: number;
   isActive: boolean;
   orderId?: number | null;
+  operationStage?: string;
 }): Promise<void> {
   const res = await fetch(`${API_BASE}?action=save-operation`, {
     method: 'POST',
@@ -499,6 +507,49 @@ export async function saveOperation(data: {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || 'Chyba při ukládání operace');
   }
+}
+
+export async function fetchOrderAssignments(params?: {
+  orderId?: number;
+  employeeId?: number;
+}): Promise<import('../types').OrderAssignmentItem[]> {
+  const query = new URLSearchParams({ action: 'get-order-assignments' });
+  if (params?.orderId) query.append('orderId', params.orderId.toString());
+  if (params?.employeeId) query.append('employeeId', params.employeeId.toString());
+  const res = await fetch(`${API_BASE}?${query.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Chyba při načítání přiřazení brigádníků');
+  return res.json();
+}
+
+export async function saveOrderAssignment(data: {
+  id?: number;
+  orderId: number;
+  employeeId: number;
+  operationId?: number | null;
+  assignedPieces: number;
+  deadlineDate?: string;
+  workplace: string;
+  note?: string;
+}): Promise<void> {
+  const res = await fetch(`${API_BASE}?action=save-order-assignment`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Chyba při přiřazování brigádníka');
+  }
+}
+
+export async function deleteOrderAssignment(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}?action=delete-order-assignment&id=${id}`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Chyba při odebírání přiřazení');
 }
 
 export async function fetchProductionLogs(params?: {

@@ -1,4 +1,4 @@
-<%@ WebHandler Language="C#" Class="KipackyApiHandler" %>
+﻿<%@ WebHandler Language="C#" Class="KipackyApiHandler" %>
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -145,6 +145,18 @@ public class KipackyApiHandler : IHttpHandler
                 case "save-operation":
                     RequireAuth(context);
                     HandleSaveOperation(context);
+                    break;
+                case "get-order-assignments":
+                    RequireAuth(context);
+                    HandleGetOrderAssignments(context);
+                    break;
+                case "save-order-assignment":
+                    RequireAuth(context);
+                    HandleSaveOrderAssignment(context);
+                    break;
+                case "delete-order-assignment":
+                    RequireAuth(context);
+                    HandleDeleteOrderAssignment(context);
                     break;
                 case "get-production":
                     RequireAuth(context);
@@ -456,6 +468,49 @@ IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].
 
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Employees]') AND name = 'PhotoUrl')
     ALTER TABLE [Kipacky].[kipa_Employees] ADD [PhotoUrl] NVARCHAR(MAX) NULL;
+
+-- FÁZE 2: Rozšíření zakázek (Orders)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Orders]') AND name = 'MinTargetPieces')
+    ALTER TABLE [Kipacky].[kipa_Orders] ADD [MinTargetPieces] INT NULL;
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Orders]') AND name = 'MaxTargetPieces')
+    ALTER TABLE [Kipacky].[kipa_Orders] ADD [MaxTargetPieces] INT NULL;
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Orders]') AND name = 'PackagingDesc')
+    ALTER TABLE [Kipacky].[kipa_Orders] ADD [PackagingDesc] NVARCHAR(MAX) NULL;
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Orders]') AND name = 'LogisticsDesc')
+    ALTER TABLE [Kipacky].[kipa_Orders] ADD [LogisticsDesc] NVARCHAR(MAX) NULL;
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Orders]') AND name = 'CoordinatorContact')
+    ALTER TABLE [Kipacky].[kipa_Orders] ADD [CoordinatorContact] NVARCHAR(200) NULL;
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Orders]') AND name = 'CustomerContact')
+    ALTER TABLE [Kipacky].[kipa_Orders] ADD [CustomerContact] NVARCHAR(200) NULL;
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Orders]') AND name = 'WorkplaceMode')
+    ALTER TABLE [Kipacky].[kipa_Orders] ADD [WorkplaceMode] NVARCHAR(50) NULL DEFAULT 'Na dílně';
+
+-- FÁZE 2: Rozšíření operací (Operations - Pomocné práce vs Finální fáze)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Operations]') AND name = 'OperationStage')
+    ALTER TABLE [Kipacky].[kipa_Operations] ADD [OperationStage] NVARCHAR(50) NOT NULL DEFAULT 'Final';
+
+-- FÁZE 2: Tabulka pro přiřazení brigádníků na zakázku (OrderAssignments)
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'kipa_OrderAssignments' AND schema_id = SCHEMA_ID('Kipacky'))
+BEGIN
+    CREATE TABLE [Kipacky].[kipa_OrderAssignments] (
+        [Id] INT IDENTITY(1,1) PRIMARY KEY,
+        [OrderId] INT NOT NULL,
+        [EmployeeId] INT NOT NULL,
+        [OperationId] INT NULL,
+        [AssignedPieces] INT NOT NULL DEFAULT 0,
+        [AssignedAt] DATETIME NOT NULL DEFAULT GETDATE(),
+        [DeadlineDate] DATE NULL,
+        [Workplace] NVARCHAR(50) NOT NULL DEFAULT 'Na dílně',
+        [Status] NVARCHAR(50) NOT NULL DEFAULT 'Active',
+        [Note] NVARCHAR(MAX) NULL
+    );
+END
 ";
             using (var cmd = new SqlCommand(sql, conn))
             {
@@ -2022,6 +2077,7 @@ WHERE Id = @id", conn))
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
+            EnsureSchemaMigrations(conn);
             string sql = @"
 SELECT o.Id, o.Name, o.IsActive, o.CreatedAt, 
        ISNULL(o.TotalPiecesTarget, ISNULL(o.TargetPieces, 0)) AS TargetPcs,
@@ -2029,7 +2085,8 @@ SELECT o.Id, o.Name, o.IsActive, o.CreatedAt,
        o.Description,
        o.StartDate,
        ISNULL(o.TargetPricePerPiece, 0) AS TargetPrice,
-       ISNULL((SELECT SUM(ISNULL(p.ValidatedPieces, p.SubmittedPieces)) FROM [Kipacky].[kipa_ProductionLogs] p WHERE p.OrderId = o.Id AND p.Status = 'Approved'), 0) AS CompletedPieces
+       ISNULL((SELECT SUM(ISNULL(p.ValidatedPieces, p.SubmittedPieces)) FROM [Kipacky].[kipa_ProductionLogs] p WHERE p.OrderId = o.Id AND p.Status = 'Approved'), 0) AS CompletedPieces,
+       o.MinTargetPieces, o.MaxTargetPieces, o.PackagingDesc, o.LogisticsDesc, o.CoordinatorContact, o.CustomerContact, o.WorkplaceMode
 FROM [Kipacky].[kipa_Orders] o
 ORDER BY o.IsActive DESC, o.Id DESC";
 
@@ -2044,6 +2101,13 @@ ORDER BY o.IsActive DESC, o.Id DESC";
                         DateTime? endD = reader.IsDBNull(5) ? (DateTime?)null : reader.GetDateTime(5);
                         DateTime? startD = reader.IsDBNull(7) ? (DateTime?)null : reader.GetDateTime(7);
                         decimal targetPrice = reader.GetDecimal(8);
+                        int? minPcs = reader.IsDBNull(10) ? (int?)null : reader.GetInt32(10);
+                        int? maxPcs = reader.IsDBNull(11) ? (int?)null : reader.GetInt32(11);
+                        string packDesc = reader.IsDBNull(12) ? "" : reader.GetString(12);
+                        string logDesc = reader.IsDBNull(13) ? "" : reader.GetString(13);
+                        string coordContact = reader.IsDBNull(14) ? "" : reader.GetString(14);
+                        string custContact = reader.IsDBNull(15) ? "" : reader.GetString(15);
+                        string workMode = reader.IsDBNull(16) ? "Na dílně" : reader.GetString(16);
 
                         list.Add(new Dictionary<string, object>
                         {
@@ -2060,7 +2124,14 @@ ORDER BY o.IsActive DESC, o.Id DESC";
                             { "description", reader.IsDBNull(6) ? "" : reader.GetString(6) },
                             { "completedPieces", compPcs },
                             { "remainingPieces", (targetPcs > 0 && targetPcs > compPcs) ? (targetPcs - compPcs) : 0 },
-                            { "percentDone", (targetPcs > 0) ? Math.Min(100, Math.Round(((double)compPcs / targetPcs) * 100, 1)) : 0 }
+                            { "percentDone", (targetPcs > 0) ? Math.Min(100, Math.Round(((double)compPcs / targetPcs) * 100, 1)) : 0 },
+                            { "minTargetPieces", minPcs },
+                            { "maxTargetPieces", maxPcs },
+                            { "packagingDesc", packDesc },
+                            { "logisticsDesc", logDesc },
+                            { "coordinatorContact", coordContact },
+                            { "customerContact", custContact },
+                            { "workplaceMode", workMode }
                         });
                     }
                 }
@@ -2083,20 +2154,31 @@ ORDER BY o.IsActive DESC, o.Id DESC";
         string description = data.ContainsKey("description") ? Convert.ToString(data["description"]).Trim() : "";
         bool isActive = data.ContainsKey("isActive") ? Convert.ToBoolean(data["isActive"]) : true;
 
+        int? minTargetPieces = (data.ContainsKey("minTargetPieces") && data["minTargetPieces"] != null && !string.IsNullOrEmpty(Convert.ToString(data["minTargetPieces"]))) ? (int?)Convert.ToInt32(data["minTargetPieces"]) : null;
+        int? maxTargetPieces = (data.ContainsKey("maxTargetPieces") && data["maxTargetPieces"] != null && !string.IsNullOrEmpty(Convert.ToString(data["maxTargetPieces"]))) ? (int?)Convert.ToInt32(data["maxTargetPieces"]) : null;
+        string packagingDesc = data.ContainsKey("packagingDesc") ? Convert.ToString(data["packagingDesc"]).Trim() : "";
+        string logisticsDesc = data.ContainsKey("logisticsDesc") ? Convert.ToString(data["logisticsDesc"]).Trim() : "";
+        string coordinatorContact = data.ContainsKey("coordinatorContact") ? Convert.ToString(data["coordinatorContact"]).Trim() : "";
+        string customerContact = data.ContainsKey("customerContact") ? Convert.ToString(data["customerContact"]).Trim() : "";
+        string workplaceMode = data.ContainsKey("workplaceMode") ? Convert.ToString(data["workplaceMode"]).Trim() : "Na dílně";
+
         if (string.IsNullOrWhiteSpace(name))
         {
-            SendError(context, 400, "N\u00E1zev zak\u00E1zky je povinn\u00FD.");
+            SendError(context, 400, "Název zakázky je povinný.");
             return;
         }
 
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
+            EnsureSchemaMigrations(conn);
+
             if (id > 0)
             {
                 using (var cmd = new SqlCommand(@"
 UPDATE [Kipacky].[kipa_Orders]
-SET Name = @n, IsActive = @a, TargetPieces = @tp, TotalPiecesTarget = @tp, Deadline = @ed, EndDate = @ed, StartDate = @sd, TargetPricePerPiece = @tpr, Description = @ds
+SET Name = @n, IsActive = @a, TargetPieces = @tp, TotalPiecesTarget = @tp, Deadline = @ed, EndDate = @ed, StartDate = @sd, TargetPricePerPiece = @tpr, Description = @ds,
+    MinTargetPieces = @minP, MaxTargetPieces = @maxP, PackagingDesc = @packD, LogisticsDesc = @logD, CoordinatorContact = @coord, CustomerContact = @cust, WorkplaceMode = @wp
 WHERE Id = @id", conn))
                 {
                     cmd.Parameters.AddWithValue("@n", name);
@@ -2106,6 +2188,13 @@ WHERE Id = @id", conn))
                     cmd.Parameters.AddWithValue("@sd", startDate.HasValue ? (object)startDate.Value : DBNull.Value);
                     cmd.Parameters.AddWithValue("@tpr", targetPrice);
                     cmd.Parameters.AddWithValue("@ds", string.IsNullOrEmpty(description) ? (object)DBNull.Value : description);
+                    cmd.Parameters.AddWithValue("@minP", minTargetPieces.HasValue ? (object)minTargetPieces.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@maxP", maxTargetPieces.HasValue ? (object)maxTargetPieces.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@packD", string.IsNullOrEmpty(packagingDesc) ? (object)DBNull.Value : packagingDesc);
+                    cmd.Parameters.AddWithValue("@logD", string.IsNullOrEmpty(logisticsDesc) ? (object)DBNull.Value : logisticsDesc);
+                    cmd.Parameters.AddWithValue("@coord", string.IsNullOrEmpty(coordinatorContact) ? (object)DBNull.Value : coordinatorContact);
+                    cmd.Parameters.AddWithValue("@cust", string.IsNullOrEmpty(customerContact) ? (object)DBNull.Value : customerContact);
+                    cmd.Parameters.AddWithValue("@wp", string.IsNullOrEmpty(workplaceMode) ? (object)"Na dílně" : workplaceMode);
                     cmd.Parameters.AddWithValue("@id", id);
                     cmd.ExecuteNonQuery();
                 }
@@ -2113,9 +2202,11 @@ WHERE Id = @id", conn))
             else
             {
                 using (var cmd = new SqlCommand(@"
-INSERT INTO [Kipacky].[kipa_Orders] (Name, IsActive, TargetPieces, TotalPiecesTarget, Deadline, EndDate, StartDate, TargetPricePerPiece, Description)
+INSERT INTO [Kipacky].[kipa_Orders] 
+(Name, IsActive, TargetPieces, TotalPiecesTarget, Deadline, EndDate, StartDate, TargetPricePerPiece, Description, MinTargetPieces, MaxTargetPieces, PackagingDesc, LogisticsDesc, CoordinatorContact, CustomerContact, WorkplaceMode)
 OUTPUT INSERTED.Id
-VALUES (@n, @a, @tp, @tp, @ed, @ed, @sd, @tpr, @ds)", conn))
+VALUES 
+(@n, @a, @tp, @tp, @ed, @ed, @sd, @tpr, @ds, @minP, @maxP, @packD, @logD, @coord, @cust, @wp)", conn))
                 {
                     cmd.Parameters.AddWithValue("@n", name);
                     cmd.Parameters.AddWithValue("@a", isActive);
@@ -2124,6 +2215,13 @@ VALUES (@n, @a, @tp, @tp, @ed, @ed, @sd, @tpr, @ds)", conn))
                     cmd.Parameters.AddWithValue("@sd", startDate.HasValue ? (object)startDate.Value : DBNull.Value);
                     cmd.Parameters.AddWithValue("@tpr", targetPrice);
                     cmd.Parameters.AddWithValue("@ds", string.IsNullOrEmpty(description) ? (object)DBNull.Value : description);
+                    cmd.Parameters.AddWithValue("@minP", minTargetPieces.HasValue ? (object)minTargetPieces.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@maxP", maxTargetPieces.HasValue ? (object)maxTargetPieces.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@packD", string.IsNullOrEmpty(packagingDesc) ? (object)DBNull.Value : packagingDesc);
+                    cmd.Parameters.AddWithValue("@logD", string.IsNullOrEmpty(logisticsDesc) ? (object)DBNull.Value : logisticsDesc);
+                    cmd.Parameters.AddWithValue("@coord", string.IsNullOrEmpty(coordinatorContact) ? (object)DBNull.Value : coordinatorContact);
+                    cmd.Parameters.AddWithValue("@cust", string.IsNullOrEmpty(customerContact) ? (object)DBNull.Value : customerContact);
+                    cmd.Parameters.AddWithValue("@wp", string.IsNullOrEmpty(workplaceMode) ? (object)"Na dílně" : workplaceMode);
                     id = Convert.ToInt32(cmd.ExecuteScalar());
                 }
             }
@@ -2182,6 +2280,7 @@ VALUES (@n, @a, @tp, @tp, @ed, @ed, @sd, @tpr, @ds)", conn))
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
+            EnsureSchemaMigrations(conn);
 
             // 1. Zakázka
             using (var cmd = new SqlCommand(@"
@@ -2335,8 +2434,10 @@ ORDER BY e.FullName ASC, op.Name ASC", conn))
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
+            EnsureSchemaMigrations(conn);
+
             string sql = @"
-SELECT op.Id, op.Name, op.NormPerHour, op.RatePerPiece, op.IsActive, op.OrderId, o.Name AS OrderName
+SELECT op.Id, op.Name, op.NormPerHour, op.RatePerPiece, op.IsActive, op.OrderId, o.Name AS OrderName, ISNULL(op.OperationStage, 'Final') AS OperationStage
 FROM [Kipacky].[kipa_Operations] op
 LEFT JOIN [Kipacky].[kipa_Orders] o ON op.OrderId = o.Id
 WHERE 1=1 ";
@@ -2364,7 +2465,8 @@ WHERE 1=1 ";
                             { "ratePerPiece", Convert.ToDouble(reader.GetDecimal(3)) },
                             { "isActive", reader.GetBoolean(4) },
                             { "orderId", reader.IsDBNull(5) ? (int?)null : reader.GetInt32(5) },
-                            { "orderName", reader.IsDBNull(6) ? "" : reader.GetString(6) }
+                            { "orderName", reader.IsDBNull(6) ? "" : reader.GetString(6) },
+                            { "operationStage", reader.GetString(7) }
                         });
                     }
                 }
@@ -2383,40 +2485,182 @@ WHERE 1=1 ";
         bool isActive = data.ContainsKey("isActive") ? Convert.ToBoolean(data["isActive"]) : true;
         int? orderId = (data.ContainsKey("orderId") && data["orderId"] != null && !string.IsNullOrEmpty(Convert.ToString(data["orderId"])) && Convert.ToInt32(data["orderId"]) > 0)
             ? Convert.ToInt32(data["orderId"]) : (int?)null;
+        string operationStage = data.ContainsKey("operationStage") ? Convert.ToString(data["operationStage"]).Trim() : "Final";
 
         if (string.IsNullOrWhiteSpace(name))
         {
-            SendError(context, 400, "N\u00E1zev operace je povinn\u00FD.");
+            SendError(context, 400, "Název operace je povinný.");
             return;
         }
 
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
+            EnsureSchemaMigrations(conn);
+
             if (id > 0)
             {
-                using (var cmd = new SqlCommand("UPDATE [Kipacky].[kipa_Operations] SET Name = @n, NormPerHour = @norm, RatePerPiece = @rate, IsActive = @a, OrderId = @ord WHERE Id = @id", conn))
+                using (var cmd = new SqlCommand("UPDATE [Kipacky].[kipa_Operations] SET Name = @n, NormPerHour = @norm, RatePerPiece = @rate, IsActive = @a, OrderId = @ord, OperationStage = @stage WHERE Id = @id", conn))
                 {
                     cmd.Parameters.AddWithValue("@n", name);
                     cmd.Parameters.AddWithValue("@norm", norm);
                     cmd.Parameters.AddWithValue("@rate", rate);
                     cmd.Parameters.AddWithValue("@a", isActive);
                     cmd.Parameters.AddWithValue("@ord", orderId.HasValue ? (object)orderId.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@stage", string.IsNullOrEmpty(operationStage) ? "Final" : operationStage);
                     cmd.Parameters.AddWithValue("@id", id);
                     cmd.ExecuteNonQuery();
                 }
             }
             else
             {
-                using (var cmd = new SqlCommand("INSERT INTO [Kipacky].[kipa_Operations] (Name, NormPerHour, RatePerPiece, IsActive, OrderId) VALUES (@n, @norm, @rate, @a, @ord)", conn))
+                using (var cmd = new SqlCommand("INSERT INTO [Kipacky].[kipa_Operations] (Name, NormPerHour, RatePerPiece, IsActive, OrderId, OperationStage) VALUES (@n, @norm, @rate, @a, @ord, @stage)", conn))
                 {
                     cmd.Parameters.AddWithValue("@n", name);
                     cmd.Parameters.AddWithValue("@norm", norm);
                     cmd.Parameters.AddWithValue("@rate", rate);
                     cmd.Parameters.AddWithValue("@a", isActive);
                     cmd.Parameters.AddWithValue("@ord", orderId.HasValue ? (object)orderId.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@stage", string.IsNullOrEmpty(operationStage) ? "Final" : operationStage);
                     cmd.ExecuteNonQuery();
                 }
+            }
+        }
+        SendJson(context, new Dictionary<string, object> { { "success", true } });
+    }
+
+    private void HandleGetOrderAssignments(HttpContext context)
+    {
+        string orderIdStr = context.Request.QueryString["orderId"];
+        string empIdStr = context.Request.QueryString["employeeId"];
+        var list = new List<Dictionary<string, object>>();
+
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            EnsureSchemaMigrations(conn);
+
+            string sql = @"
+SELECT a.Id, a.OrderId, o.Name AS OrderName, a.EmployeeId, e.FullName AS EmployeeName, e.EmployeeNumber,
+       a.OperationId, op.Name AS OperationName, a.AssignedPieces, a.AssignedAt, a.DeadlineDate,
+       a.Workplace, a.Status, a.Note,
+       ISNULL((SELECT SUM(ISNULL(p.ValidatedPieces, p.SubmittedPieces)) FROM [Kipacky].[kipa_ProductionLogs] p WHERE p.OrderId = a.OrderId AND p.EmployeeId = a.EmployeeId AND (a.OperationId IS NULL OR p.OperationId = a.OperationId) AND p.Status = 'Approved'), 0) AS DonePieces
+FROM [Kipacky].[kipa_OrderAssignments] a
+JOIN [Kipacky].[kipa_Orders] o ON a.OrderId = o.Id
+JOIN [Kipacky].[kipa_Employees] e ON a.EmployeeId = e.Id
+LEFT JOIN [Kipacky].[kipa_Operations] op ON a.OperationId = op.Id
+WHERE 1=1 ";
+
+            if (!string.IsNullOrEmpty(orderIdStr)) sql += " AND a.OrderId = @orderId ";
+            if (!string.IsNullOrEmpty(empIdStr)) sql += " AND a.EmployeeId = @empId ";
+            sql += " ORDER BY a.Id DESC";
+
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                if (!string.IsNullOrEmpty(orderIdStr)) cmd.Parameters.AddWithValue("@orderId", Convert.ToInt32(orderIdStr));
+                if (!string.IsNullOrEmpty(empIdStr)) cmd.Parameters.AddWithValue("@empId", Convert.ToInt32(empIdStr));
+
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        DateTime? deadD = reader.IsDBNull(10) ? (DateTime?)null : reader.GetDateTime(10);
+                        int assignedPcs = reader.GetInt32(8);
+                        int donePcs = Convert.ToInt32(reader.GetValue(14));
+
+                        list.Add(new Dictionary<string, object>
+                        {
+                            { "id", reader.GetInt32(0) },
+                            { "orderId", reader.GetInt32(1) },
+                            { "orderName", reader.GetString(2) },
+                            { "employeeId", reader.GetInt32(3) },
+                            { "employeeName", reader.GetString(4) },
+                            { "employeeNumber", reader.IsDBNull(5) ? "" : reader.GetString(5) },
+                            { "operationId", reader.IsDBNull(6) ? (int?)null : reader.GetInt32(6) },
+                            { "operationName", reader.IsDBNull(7) ? "Všechny operace" : reader.GetString(7) },
+                            { "assignedPieces", assignedPcs },
+                            { "assignedAt", reader.GetDateTime(9).ToString("s") },
+                            { "deadlineDate", deadD.HasValue ? deadD.Value.ToString("yyyy-MM-dd") : null },
+                            { "workplace", reader.GetString(11) },
+                            { "status", reader.GetString(12) },
+                            { "note", reader.IsDBNull(13) ? "" : reader.GetString(13) },
+                            { "donePieces", donePcs },
+                            { "remainingPieces", Math.Max(0, assignedPcs - donePcs) }
+                        });
+                    }
+                }
+            }
+        }
+        SendJson(context, list);
+    }
+
+    private void HandleSaveOrderAssignment(HttpContext context)
+    {
+        var data = ReadJsonBody(context);
+        int id = data.ContainsKey("id") ? Convert.ToInt32(data["id"]) : 0;
+        int orderId = Convert.ToInt32(data["orderId"]);
+        int employeeId = Convert.ToInt32(data["employeeId"]);
+        int? operationId = (data.ContainsKey("operationId") && data["operationId"] != null && Convert.ToInt32(data["operationId"]) > 0)
+            ? (int?)Convert.ToInt32(data["operationId"]) : null;
+        int assignedPieces = data.ContainsKey("assignedPieces") ? Convert.ToInt32(data["assignedPieces"]) : 0;
+        string deadStr = data.ContainsKey("deadlineDate") ? Convert.ToString(data["deadlineDate"]) : null;
+        DateTime? deadlineDate = (!string.IsNullOrEmpty(deadStr)) ? (DateTime?)DateTime.Parse(deadStr) : null;
+        string workplace = data.ContainsKey("workplace") ? Convert.ToString(data["workplace"]).Trim() : "Na dílně";
+        string note = data.ContainsKey("note") ? Convert.ToString(data["note"]).Trim() : "";
+
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            EnsureSchemaMigrations(conn);
+
+            if (id > 0)
+            {
+                using (var cmd = new SqlCommand(@"
+UPDATE [Kipacky].[kipa_OrderAssignments]
+SET OrderId = @ord, EmployeeId = @emp, OperationId = @op, AssignedPieces = @pcs, DeadlineDate = @dl, Workplace = @wp, Note = @nt
+WHERE Id = @id", conn))
+                {
+                    cmd.Parameters.AddWithValue("@ord", orderId);
+                    cmd.Parameters.AddWithValue("@emp", employeeId);
+                    cmd.Parameters.AddWithValue("@op", operationId.HasValue ? (object)operationId.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@pcs", assignedPieces);
+                    cmd.Parameters.AddWithValue("@dl", deadlineDate.HasValue ? (object)deadlineDate.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@wp", string.IsNullOrEmpty(workplace) ? "Na dílně" : workplace);
+                    cmd.Parameters.AddWithValue("@nt", string.IsNullOrEmpty(note) ? (object)DBNull.Value : note);
+                    cmd.Parameters.AddWithValue("@id", id);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            else
+            {
+                using (var cmd = new SqlCommand(@"
+INSERT INTO [Kipacky].[kipa_OrderAssignments] (OrderId, EmployeeId, OperationId, AssignedPieces, AssignedAt, DeadlineDate, Workplace, Status, Note)
+VALUES (@ord, @emp, @op, @pcs, GETDATE(), @dl, @wp, 'Active', @nt)", conn))
+                {
+                    cmd.Parameters.AddWithValue("@ord", orderId);
+                    cmd.Parameters.AddWithValue("@emp", employeeId);
+                    cmd.Parameters.AddWithValue("@op", operationId.HasValue ? (object)operationId.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@pcs", assignedPieces);
+                    cmd.Parameters.AddWithValue("@dl", deadlineDate.HasValue ? (object)deadlineDate.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@wp", string.IsNullOrEmpty(workplace) ? "Na dílně" : workplace);
+                    cmd.Parameters.AddWithValue("@nt", string.IsNullOrEmpty(note) ? (object)DBNull.Value : note);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+        SendJson(context, new Dictionary<string, object> { { "success", true } });
+    }
+
+    private void HandleDeleteOrderAssignment(HttpContext context)
+    {
+        int id = Convert.ToInt32(context.Request.QueryString["id"]);
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            using (var cmd = new SqlCommand("DELETE FROM [Kipacky].[kipa_OrderAssignments] WHERE Id = @id", conn))
+            {
+                cmd.Parameters.AddWithValue("@id", id);
+                cmd.ExecuteNonQuery();
             }
         }
         SendJson(context, new Dictionary<string, object> { { "success", true } });

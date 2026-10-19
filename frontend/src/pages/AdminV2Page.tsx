@@ -29,10 +29,28 @@ import {
   RefreshCw,
   Bell,
   Eye,
-  Edit2
+  Edit2,
+  Printer,
+  Archive,
+  Check,
+  Trash2,
+  Settings,
+  FolderOpen
 } from 'lucide-react';
-import { Employee, OrderItem, OperationItem } from '../types';
-import { fetchEmployees, createEmployee, updateEmployee, fetchOrders, fetchOperations } from '../api/client';
+import { Employee, OrderItem, OperationItem, OrderAssignmentItem, OrderDetailResult } from '../types';
+import {
+  fetchEmployees,
+  createEmployee,
+  updateEmployee,
+  fetchOrders,
+  saveOrder,
+  fetchOperations,
+  saveOperation,
+  fetchOrderAssignments,
+  saveOrderAssignment,
+  deleteOrderAssignment,
+  fetchOrderDetail
+} from '../api/client';
 import { GREENBERG_LOGO } from '../assets/logoBase64';
 import { APP_VERSION } from '../version';
 
@@ -77,6 +95,49 @@ export const AdminV2Page: React.FC<AdminV2PageProps> = ({ onLogout, onGoToKiosk,
   // Zakázky a operace pro náhled
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [operations, setOperations] = useState<OperationItem[]>([]);
+  const [orderAssignments, setOrderAssignments] = useState<OrderAssignmentItem[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+
+  // Fáze 2: Stav zakázek (Aktivní vs Archiv)
+  const [orderArchiveView, setOrderArchiveView] = useState<'active' | 'archive'>('active');
+
+  // Fáze 2: Sbalené formuláře (Pouze nadpis/tlačítko, rozbalí se po kliku)
+  const [openOrderForm, setOpenOrderForm] = useState<'none' | 'newOrder' | 'newOp' | 'assignWorker'>('none');
+
+  // Formulář 1: Nová zakázka
+  const [orderName, setOrderName] = useState('');
+  const [orderStatus, setOrderStatus] = useState<boolean>(true);
+  const [orderStartDate, setOrderStartDate] = useState('');
+  const [orderEndDate, setOrderEndDate] = useState('');
+  const [orderMinPieces, setOrderMinPieces] = useState<string>('');
+  const [orderMaxPieces, setOrderMaxPieces] = useState<string>('');
+  const [orderDesc, setOrderDesc] = useState('');
+  const [orderPackagingDesc, setOrderPackagingDesc] = useState('');
+  const [orderLogisticsDesc, setOrderLogisticsDesc] = useState('');
+  const [orderCoordinatorContact, setOrderCoordinatorContact] = useState('');
+  const [orderCustomerContact, setOrderCustomerContact] = useState('');
+  const [orderWorkplaceMode, setOrderWorkplaceMode] = useState<'Na dílně' | 'Doma'>('Na dílně');
+
+  // Formulář 2: Operace, normy a sazby
+  const [opName, setOpName] = useState('');
+  const [opNormPerHour, setOpNormPerHour] = useState<number>(100);
+  const [opRatePerPiece, setOpRatePerPiece] = useState<string>('1.35');
+  const [opOrderId, setOpOrderId] = useState<string>('');
+  const [opStage, setOpStage] = useState<'Auxiliary' | 'Final'>('Final');
+
+  // Formulář 3: Přiřadit brigádníky na zakázku
+  const [assignWorkerEmpId, setAssignWorkerEmpId] = useState<string>('');
+  const [assignWorkerOrderId, setAssignWorkerOrderId] = useState<string>('');
+  const [assignWorkerOpId, setAssignWorkerOpId] = useState<string>('');
+  const [assignWorkerPieces, setAssignWorkerPieces] = useState<number>(500);
+  const [assignWorkerDeadline, setAssignWorkerDeadline] = useState<string>('');
+  const [assignWorkerWorkplace, setAssignWorkerWorkplace] = useState<'Na dílně' | 'Doma'>('Na dílně');
+  const [assignWorkerNote, setAssignWorkerNote] = useState('');
+
+  // Tisk / Detail Zakázkového listu
+  const [selectedOrderSheet, setSelectedOrderSheet] = useState<OrderItem | null>(null);
+  const [orderSheetDetail, setOrderSheetDetail] = useState<OrderDetailResult | null>(null);
+  const [loadingOrderSheet, setLoadingOrderSheet] = useState(false);
 
   // Notifikace / zpětná vazba
   const [statusMsg, setStatusMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -94,19 +155,180 @@ export const AdminV2Page: React.FC<AdminV2PageProps> = ({ onLogout, onGoToKiosk,
 
   const loadData = async () => {
     setLoadingEmployees(true);
+    setLoadingOrders(true);
     try {
-      const [empData, ordData, opData] = await Promise.all([
+      const [empData, ordData, opData, assignData] = await Promise.all([
         fetchEmployees().catch(() => []),
         fetchOrders().catch(() => []),
         fetchOperations().catch(() => []),
+        fetchOrderAssignments().catch(() => [])
       ]);
       setEmployees(empData);
       setOrders(ordData);
       setOperations(opData);
+      setOrderAssignments(assignData);
     } catch {
       showNotification('Nepodařilo se načíst data ze serveru', 'error');
     } finally {
       setLoadingEmployees(false);
+      setLoadingOrders(false);
+    }
+  };
+
+  // Výpočet zbývajících dní zakázky
+  const getRemainingDays = (endDateStr?: string | null) => {
+    if (!endDateStr) return null;
+    const end = new Date(endDateStr);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diffTime = end.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+
+  // Vytvoření / uložení zakázky
+  const handleSaveOrderSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!orderName.trim()) {
+      showNotification('Vyplňte prosím název zakázky', 'error');
+      return;
+    }
+
+    try {
+      const minP = orderMinPieces ? parseInt(orderMinPieces, 10) : null;
+      const maxP = orderMaxPieces ? parseInt(orderMaxPieces, 10) : null;
+      const targetPcs = maxP || minP || 0;
+
+      await saveOrder({
+        name: orderName.trim(),
+        isActive: orderStatus,
+        startDate: orderStartDate || undefined,
+        endDate: orderEndDate || undefined,
+        minTargetPieces: minP,
+        maxTargetPieces: maxP,
+        totalPiecesTarget: targetPcs,
+        targetPieces: targetPcs,
+        description: orderDesc.trim(),
+        packagingDesc: orderPackagingDesc.trim(),
+        logisticsDesc: orderLogisticsDesc.trim(),
+        coordinatorContact: orderCoordinatorContact.trim(),
+        customerContact: orderCustomerContact.trim(),
+        workplaceMode: orderWorkplaceMode
+      });
+
+      showNotification(`Zakázka "${orderName}" byla úspěšně uložena.`);
+      setOpenOrderForm('none');
+      // Reset formuláře
+      setOrderName('');
+      setOrderStartDate('');
+      setOrderEndDate('');
+      setOrderMinPieces('');
+      setOrderMaxPieces('');
+      setOrderDesc('');
+      setOrderPackagingDesc('');
+      setOrderLogisticsDesc('');
+      setOrderCoordinatorContact('');
+      setOrderCustomerContact('');
+      loadData();
+    } catch (err: any) {
+      showNotification(err.message || 'Chyba při ukládání zakázky', 'error');
+    }
+  };
+
+  // Vytvoření / uložení operace
+  const handleSaveOperationSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!opName.trim()) {
+      showNotification('Vyplňte prosím název operace', 'error');
+      return;
+    }
+
+    try {
+      const rate = parseFloat(opRatePerPiece.replace(',', '.')) || 1.35;
+      const ordId = opOrderId ? parseInt(opOrderId, 10) : null;
+
+      await saveOperation({
+        name: opName.trim(),
+        normPerHour: opNormPerHour,
+        ratePerPiece: rate,
+        isActive: true,
+        orderId: ordId,
+        operationStage: opStage
+      });
+
+      showNotification(`Operace "${opName}" (${opStage === 'Final' ? 'Finální fáze' : 'Pomocné práce'}) byla uložena.`);
+      setOpenOrderForm('none');
+      setOpName('');
+      setOpNormPerHour(100);
+      setOpRatePerPiece('1.35');
+      setOpOrderId('');
+      setOpStage('Final');
+      loadData();
+    } catch (err: any) {
+      showNotification(err.message || 'Chyba při ukládání operace', 'error');
+    }
+  };
+
+  // Přiřazení brigádníka na zakázku
+  const handleAssignWorkerSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assignWorkerEmpId || !assignWorkerOrderId) {
+      showNotification('Vyberte prosím brigádníka i zakázku', 'error');
+      return;
+    }
+
+    try {
+      const empId = parseInt(assignWorkerEmpId, 10);
+      const ordId = parseInt(assignWorkerOrderId, 10);
+      const opId = assignWorkerOpId ? parseInt(assignWorkerOpId, 10) : null;
+
+      await saveOrderAssignment({
+        orderId: ordId,
+        employeeId: empId,
+        operationId: opId,
+        assignedPieces: assignWorkerPieces,
+        deadlineDate: assignWorkerDeadline || undefined,
+        workplace: assignWorkerWorkplace,
+        note: assignWorkerNote.trim()
+      });
+
+      showNotification('Brigádník byl úspěšně přiřazen na zakázku.');
+      setOpenOrderForm('none');
+      setAssignWorkerEmpId('');
+      setAssignWorkerOrderId('');
+      setAssignWorkerOpId('');
+      setAssignWorkerPieces(500);
+      setAssignWorkerDeadline('');
+      setAssignWorkerNote('');
+      loadData();
+    } catch (err: any) {
+      showNotification(err.message || 'Chyba při přiřazování brigádníka', 'error');
+    }
+  };
+
+  // Otevření Zakázkového listu
+  const handleOpenOrderSheet = async (order: OrderItem) => {
+    setSelectedOrderSheet(order);
+    setLoadingOrderSheet(true);
+    try {
+      const detail = await fetchOrderDetail(order.id);
+      setOrderSheetDetail(detail);
+    } catch {
+      showNotification('Nepodařilo se načíst detail zakázkového listu', 'error');
+    } finally {
+      setLoadingOrderSheet(false);
+    }
+  };
+
+  // Smazání přiřazení brigádníka
+  const handleDeleteAssignment = async (assignId: number) => {
+    if (!window.confirm('Opravdu chcete odebrat toto přiřazení brigádníka?')) return;
+    try {
+      await deleteOrderAssignment(assignId);
+      setOrderAssignments(orderAssignments.filter(a => a.id !== assignId));
+      showNotification('Přiřazení bylo odebráno.');
+    } catch (err: any) {
+      showNotification(err.message || 'Chyba při odebírání přiřazení', 'error');
     }
   };
 
@@ -933,14 +1155,969 @@ export const AdminV2Page: React.FC<AdminV2PageProps> = ({ onLogout, onGoToKiosk,
           </div>
         )}
 
-        {/* Zástupné obrazovky pro Fáze 2 až 7 (připraveny v navigační liště) */}
+        {/* FÁZE 2: ZAKÁZKY (ZAKÁZKOVÝ LIST & ARCHIV & OPERACE & PŘIŘAZENÍ BRIGÁDNÍKŮ) */}
         {activeTab === 'orders' && (
-          <div className="bg-white/95 border border-stone-300 rounded-2xl p-8 text-center space-y-3">
-            <Briefcase className="w-12 h-12 text-amber-600 mx-auto" />
-            <h3 className="font-heading font-bold text-xl text-[#193F34]">Fáze 2: Zakázky & Zakázkový list</h3>
-            <p className="text-sm text-stone-600 max-w-lg mx-auto">
-              Zde se bude nacházet samostatná záložka zakázek s tiskem zakázkových listů, operacemi (pomocné vs. finální fáze) a přiřazením brigádníků.
-            </p>
+          <div className="space-y-6">
+            {/* Horní řada: Tlačítka pro 3 sbalené formuláře + Přepínač Aktivní / Archiv */}
+            <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
+              {/* Tři sbalená tlačítka formulářů dle požadavku dokumentu */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOpenOrderForm(openOrderForm === 'newOrder' ? 'none' : 'newOrder')}
+                  className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-sm ${
+                    openOrderForm === 'newOrder'
+                      ? 'bg-[#193F34] text-white ring-2 ring-emerald-500'
+                      : 'bg-white hover:bg-stone-100 text-stone-800 border border-stone-300'
+                  }`}
+                >
+                  <Plus className="w-4 h-4 text-emerald-600" />
+                  <span>1. Nová zakázka</span>
+                  {openOrderForm === 'newOrder' ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setOpenOrderForm(openOrderForm === 'newOp' ? 'none' : 'newOp')}
+                  className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-sm ${
+                    openOrderForm === 'newOp'
+                      ? 'bg-[#193F34] text-white ring-2 ring-emerald-500'
+                      : 'bg-white hover:bg-stone-100 text-stone-800 border border-stone-300'
+                  }`}
+                >
+                  <Settings className="w-4 h-4 text-amber-600" />
+                  <span>2. Operace, normy & sazby</span>
+                  {openOrderForm === 'newOp' ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setOpenOrderForm(openOrderForm === 'assignWorker' ? 'none' : 'assignWorker')}
+                  className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-sm ${
+                    openOrderForm === 'assignWorker'
+                      ? 'bg-[#193F34] text-white ring-2 ring-emerald-500'
+                      : 'bg-white hover:bg-stone-100 text-stone-800 border border-stone-300'
+                  }`}
+                >
+                  <UserCheck className="w-4 h-4 text-sky-600" />
+                  <span>3. Přiřadit brigádníky na zakázku</span>
+                  {openOrderForm === 'assignWorker' ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+
+              {/* Přepínač Aktivní zakázky / Archiv */}
+              <div className="flex items-center gap-1 bg-white/90 border border-stone-300 rounded-xl p-1 text-xs font-semibold self-start md:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setOrderArchiveView('active')}
+                  className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer ${
+                    orderArchiveView === 'active'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Aktivní zakázky ({orders.filter(o => o.isActive !== false).length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOrderArchiveView('archive')}
+                  className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer ${
+                    orderArchiveView === 'archive'
+                      ? 'bg-stone-700 text-white shadow-xs'
+                      : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  <Archive className="w-3.5 h-3.5" />
+                  <span>Archiv ukončených ({orders.filter(o => o.isActive === false).length})</span>
+                </button>
+              </div>
+            </div>
+
+            {/* FORMULÁŘ 1: NOVÁ ZAKÁZKA (Sbalený, rozbalí se po kliknutí) */}
+            {openOrderForm === 'newOrder' && (
+              <div className="bg-white/95 border border-stone-300 rounded-2xl p-6 shadow-md transition-all">
+                <div className="flex items-center justify-between pb-4 border-b border-stone-200 mb-5">
+                  <h3 className="font-heading font-bold text-base text-[#193F34] flex items-center gap-2">
+                    <Plus className="w-5 h-5 text-emerald-600" />
+                    <span>Formulář 1: Založení nové zakázky do výroby</span>
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setOpenOrderForm('none')}
+                    className="text-stone-400 hover:text-stone-600 cursor-pointer"
+                  >
+                    <XCircle className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveOrderSubmit} className="space-y-4 text-xs">
+                  {/* Řada 1: Název, Stav, Termíny (od-do) + výpočet zbývá dní */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="md:col-span-2">
+                      <label className="block font-bold text-stone-700 mb-1">Název zakázky *</label>
+                      <input
+                        type="text"
+                        placeholder="např. Výroba dárkových krabic s mašlí"
+                        value={orderName}
+                        onChange={(e) => setOrderName(e.target.value)}
+                        required
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-sm font-semibold text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#193F34]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">Stav zakázky</label>
+                      <select
+                        value={orderStatus ? 'active' : 'inactive'}
+                        onChange={(e) => setOrderStatus(e.target.value === 'active')}
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl font-bold text-stone-900"
+                      >
+                        <option value="active">Aktivní zakázka</option>
+                        <option value="inactive">Ukončeno (do archivu)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">Místo realizace</label>
+                      <select
+                        value={orderWorkplaceMode}
+                        onChange={(e) => setOrderWorkplaceMode(e.target.value as any)}
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl font-semibold text-stone-900"
+                      >
+                        <option value="Na dílně">Na dílně</option>
+                        <option value="Doma">Doma</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Řada 2: Termín zahájení a ukončení + Min a Max kusy */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">Zahájení (od)</label>
+                      <input
+                        type="date"
+                        value={orderStartDate}
+                        onChange={(e) => setOrderStartDate(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl font-medium text-stone-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">
+                        Ukončení (do)
+                        {orderEndDate && (
+                          <span className="ml-1 text-[11px] font-bold text-emerald-700">
+                            ({getRemainingDays(orderEndDate)} dní zbývá)
+                          </span>
+                        )}
+                      </label>
+                      <input
+                        type="date"
+                        value={orderEndDate}
+                        onChange={(e) => setOrderEndDate(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl font-medium text-stone-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">Cílový počet kusů: MIN</label>
+                      <input
+                        type="number"
+                        placeholder="např. 500"
+                        value={orderMinPieces}
+                        onChange={(e) => setOrderMinPieces(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl font-mono font-bold text-stone-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">Cílový počet kusů: MAX</label>
+                      <input
+                        type="number"
+                        placeholder="např. 1000"
+                        value={orderMaxPieces}
+                        onChange={(e) => setOrderMaxPieces(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl font-mono font-bold text-stone-900"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Řada 3: Kontakty na koordinátora a zákazníka */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">
+                        Kontakt na koordinátora zakázky (Jméno + telefon)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="např. Marta Chorobiková (+420 777 000 111)"
+                        value={orderCoordinatorContact}
+                        onChange={(e) => setOrderCoordinatorContact(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-stone-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">
+                        Kontaktní údaj na zákazníka
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="např. Alza a.s. – pan Novák (zakazky@alza.cz)"
+                        value={orderCustomerContact}
+                        onChange={(e) => setOrderCustomerContact(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-stone-900"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Řada 4: Popis zakázky, Popis balení a Expedice */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">Popis zakázky</label>
+                      <textarea
+                        rows={2}
+                        placeholder="Detailní postup práce, specifika výroby..."
+                        value={orderDesc}
+                        onChange={(e) => setOrderDesc(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-stone-900 resize-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">Popis balení</label>
+                      <textarea
+                        rows={2}
+                        placeholder="Do krabic po 50 ks, proložit hedvábným papírem..."
+                        value={orderPackagingDesc}
+                        onChange={(e) => setOrderPackagingDesc(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-stone-900 resize-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">Expedice / logistika</label>
+                      <textarea
+                        rows={2}
+                        placeholder="Vyzvednutí kurýrem v pátek ve 14:00, paletová přeprava..."
+                        value={orderLogisticsDesc}
+                        onChange={(e) => setOrderLogisticsDesc(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-stone-900 resize-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-3 border-t border-stone-200">
+                    <button
+                      type="button"
+                      onClick={() => setOpenOrderForm('none')}
+                      className="px-4 py-2 rounded-xl text-stone-600 hover:bg-stone-100 cursor-pointer font-semibold"
+                    >
+                      Zrušit
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-6 py-2.5 rounded-xl font-bold text-sm bg-emerald-600 hover:bg-emerald-500 text-white shadow-md transition-all cursor-pointer flex items-center gap-2"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>Uložit zakázku do systému</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* FORMULÁŘ 2: OPERACE, HODINOVÉ NORMY A SAZBY (Sbalený) */}
+            {openOrderForm === 'newOp' && (
+              <div className="bg-white/95 border border-stone-300 rounded-2xl p-6 shadow-md transition-all">
+                <div className="flex items-center justify-between pb-4 border-b border-stone-200 mb-5">
+                  <h3 className="font-heading font-bold text-base text-[#193F34] flex items-center gap-2">
+                    <Settings className="w-5 h-5 text-amber-600" />
+                    <span>Formulář 2: Definice operace, hodinové normy a sazby</span>
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setOpenOrderForm('none')}
+                    className="text-stone-400 hover:text-stone-600 cursor-pointer"
+                  >
+                    <XCircle className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveOperationSubmit} className="space-y-4 text-xs">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">Přiřadit k zakázce</label>
+                      <select
+                        value={opOrderId}
+                        onChange={(e) => setOpOrderId(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-stone-900 font-semibold"
+                      >
+                        <option value="">-- Společná pro všechny zakázky --</option>
+                        {orders.map(o => (
+                          <option key={o.id} value={o.id}>{o.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">Název operace *</label>
+                      <input
+                        type="text"
+                        placeholder="např. Lepení magnetů, Kompletace krabiček"
+                        value={opName}
+                        onChange={(e) => setOpName(e.target.value)}
+                        required
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-stone-900 font-semibold"
+                      />
+                    </div>
+
+                    {/* Status operace dle zadání (Pomocné práce vs Finální fáze) */}
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">Typ a status operace *</label>
+                      <select
+                        value={opStage}
+                        onChange={(e) => setOpStage(e.target.value as any)}
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl font-bold text-stone-900"
+                      >
+                        <option value="Final">Finální fáze (produkuje hotové kusy do soupisu zakázky)</option>
+                        <option value="Auxiliary">Pomocné práce (rozpracovanost / příprava)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">
+                        Hodinová norma (ks/hod) *
+                      </label>
+                      <input
+                        type="number"
+                        value={opNormPerHour}
+                        onChange={(e) => setOpNormPerHour(parseInt(e.target.value, 10) || 100)}
+                        required
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl font-mono font-bold text-stone-900"
+                      />
+                      <span className="text-[10px] text-stone-500">Předpokládaný výkon za hodinu pro normočas</span>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">
+                        Cena za 1 ks (Kč/ks) *
+                      </label>
+                      <input
+                        type="text"
+                        value={opRatePerPiece}
+                        onChange={(e) => setOpRatePerPiece(e.target.value)}
+                        required
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl font-mono font-bold text-emerald-800"
+                      />
+                      <span className="text-[10px] text-stone-500">Sazba pro výpočet odměny a normohodin</span>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-3 border-t border-stone-200">
+                    <button
+                      type="button"
+                      onClick={() => setOpenOrderForm('none')}
+                      className="px-4 py-2 rounded-xl text-stone-600 hover:bg-stone-100 cursor-pointer font-semibold"
+                    >
+                      Zrušit
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-6 py-2.5 rounded-xl font-bold text-sm bg-amber-600 hover:bg-amber-500 text-white shadow-md transition-all cursor-pointer flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Uložit operaci</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* FORMULÁŘ 3: PŘIŘADIT BRIGÁDNÍKY NA ZAKÁZKU (Sbalený) */}
+            {openOrderForm === 'assignWorker' && (
+              <div className="bg-white/95 border border-stone-300 rounded-2xl p-6 shadow-md transition-all">
+                <div className="flex items-center justify-between pb-4 border-b border-stone-200 mb-5">
+                  <h3 className="font-heading font-bold text-base text-[#193F34] flex items-center gap-2">
+                    <UserCheck className="w-5 h-5 text-sky-600" />
+                    <span>Formulář 3: Přiřazení brigádníka na zakázku a úkon</span>
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setOpenOrderForm('none')}
+                    className="text-stone-400 hover:text-stone-600 cursor-pointer"
+                  >
+                    <XCircle className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleAssignWorkerSubmit} className="space-y-4 text-xs">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">Výběr brigádníka *</label>
+                      <select
+                        value={assignWorkerEmpId}
+                        onChange={(e) => setAssignWorkerEmpId(e.target.value)}
+                        required
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl font-bold text-stone-900"
+                      >
+                        <option value="">-- Vyberte pracovníka --</option>
+                        {employees.map(emp => (
+                          <option key={emp.id} value={emp.id}>
+                            {emp.fullName} {emp.employeeNumber ? `(#${emp.employeeNumber})` : ''} {emp.employmentStatus === 'Troublemaker' ? '⚠️' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">Výběr zakázky *</label>
+                      <select
+                        value={assignWorkerOrderId}
+                        onChange={(e) => setAssignWorkerOrderId(e.target.value)}
+                        required
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl font-bold text-stone-900"
+                      >
+                        <option value="">-- Vyberte zakázku --</option>
+                        {orders.filter(o => o.isActive !== false).map(o => (
+                          <option key={o.id} value={o.id}>{o.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">Přiřazená operace</label>
+                      <select
+                        value={assignWorkerOpId}
+                        onChange={(e) => setAssignWorkerOpId(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl font-semibold text-stone-900"
+                      >
+                        <option value="">-- Všechny operace / Celá zakázka --</option>
+                        {operations.filter(op => !assignWorkerOrderId || !op.orderId || op.orderId === parseInt(assignWorkerOrderId, 10)).map(op => (
+                          <option key={op.id} value={op.id}>
+                            {op.name} ({op.ratePerPiece} Kč/ks, {op.operationStage === 'Auxiliary' ? 'Pomocné' : 'Finální'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">Množství kusů ke zpracování *</label>
+                      <input
+                        type="number"
+                        value={assignWorkerPieces}
+                        onChange={(e) => setAssignWorkerPieces(parseInt(e.target.value, 10) || 0)}
+                        required
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl font-mono font-bold text-stone-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">Termín předání hotových kusů</label>
+                      <input
+                        type="date"
+                        value={assignWorkerDeadline}
+                        onChange={(e) => setAssignWorkerDeadline(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-stone-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">Místo realizace</label>
+                      <select
+                        value={assignWorkerWorkplace}
+                        onChange={(e) => setAssignWorkerWorkplace(e.target.value as any)}
+                        className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl font-semibold text-stone-900"
+                      >
+                        <option value="Na dílně">Na dílně</option>
+                        <option value="Doma">Doma</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-stone-700 mb-1">Poznámka / instrukce pro brigádníka</label>
+                    <input
+                      type="text"
+                      placeholder="např. Převzal materiál v úterý v 9:00, vrácení do pátku..."
+                      value={assignWorkerNote}
+                      onChange={(e) => setAssignWorkerNote(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-stone-900"
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-3 border-t border-stone-200">
+                    <button
+                      type="button"
+                      onClick={() => setOpenOrderForm('none')}
+                      className="px-4 py-2 rounded-xl text-stone-600 hover:bg-stone-100 cursor-pointer font-semibold"
+                    >
+                      Zrušit
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-6 py-2.5 rounded-xl font-bold text-sm bg-sky-600 hover:bg-sky-500 text-white shadow-md transition-all cursor-pointer flex items-center gap-2"
+                    >
+                      <UserCheck className="w-4 h-4" />
+                      <span>Přiřadit brigádníka na zakázku</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* PŘEHLEDOVÁ TABULKA ZAKÁZEK (+ TISK ZAKÁZKOVÉHO LISTU PO KLIKU NA NÁZEV) */}
+            <div className="bg-white/95 backdrop-blur-sm border border-stone-300 rounded-2xl shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-stone-200 flex items-center justify-between">
+                <div>
+                  <h3 className="font-heading font-bold text-base text-[#193F34]">
+                    {orderArchiveView === 'active' ? 'Aktivní výrobní zakázky' : 'Archiv ukončených zakázek'}
+                  </h3>
+                  <span className="text-xs text-stone-500">
+                    Kliknutím na název zakázky otevřete a vytisknete kompletní <strong>Zakázkový list</strong>
+                  </span>
+                </div>
+                {loadingOrders && (
+                  <span className="text-xs font-semibold text-emerald-700 animate-pulse">
+                    Aktualizuji data...
+                  </span>
+                )}
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm text-stone-800">
+                  <thead className="bg-stone-100/90 text-xs uppercase font-bold text-stone-600 border-b border-stone-200">
+                    <tr>
+                      <th className="px-5 py-3.5">Název zakázky (Zakázkový list)</th>
+                      <th className="px-5 py-3.5">Termín & Dny</th>
+                      <th className="px-5 py-3.5">Plnění (Hotovo / Požadavek)</th>
+                      <th className="px-5 py-3.5">Místo realizace</th>
+                      <th className="px-5 py-3.5">Přiřazení brigádníci</th>
+                      <th className="px-4 py-3.5 text-right">Akce</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-200">
+                    {orders
+                      .filter(ord => orderArchiveView === 'active' ? ord.isActive !== false : ord.isActive === false)
+                      .map((ord) => {
+                        const target = ord.totalPiecesTarget || ord.targetPieces || 0;
+                        const completed = ord.completedPieces || 0;
+                        const pct = ord.percentDone || (target > 0 ? Math.min(100, Math.round((completed / target) * 100)) : 0);
+                        const daysLeft = getRemainingDays(ord.endDate || ord.deadline);
+                        const assignedForThisOrder = orderAssignments.filter(a => a.orderId === ord.id);
+
+                        return (
+                          <tr
+                            key={ord.id}
+                            className="hover:bg-amber-50/50 transition-colors cursor-pointer group"
+                            onClick={() => handleOpenOrderSheet(ord)}
+                          >
+                            {/* Název zakázky - klikací pro Zakázkový list */}
+                            <td className="px-5 py-3.5">
+                              <div className="flex items-center gap-2">
+                                <FileText className="w-4 h-4 text-emerald-700 shrink-0 group-hover:scale-110 transition-transform" />
+                                <div>
+                                  <span className="font-bold text-[#193F34] group-hover:underline text-sm block">
+                                    {ord.name}
+                                  </span>
+                                  {ord.description && (
+                                    <span className="text-[11px] text-stone-500 block truncate max-w-xs">
+                                      {ord.description}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Termín & Zbývá dní */}
+                            <td className="px-5 py-3.5 text-xs">
+                              <span className="font-medium text-stone-800 block">
+                                {ord.startDate ? `${ord.startDate} → ` : ''}{ord.endDate || ord.deadline || 'Bez termínu'}
+                              </span>
+                              {daysLeft !== null && (
+                                <span className={`text-[11px] font-bold ${daysLeft < 0 ? 'text-rose-600' : daysLeft <= 3 ? 'text-amber-600' : 'text-emerald-700'}`}>
+                                  {daysLeft < 0 ? `Zpožděno o ${Math.abs(daysLeft)} dní` : `Zbývá ${daysLeft} dní`}
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Plnění ks (Min/Max a Progres) */}
+                            <td className="px-5 py-3.5 text-xs">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-bold text-stone-900 text-sm">
+                                  {completed} ks
+                                </span>
+                                <span className="text-stone-500">
+                                  / {target ? `${target} ks` : (ord.minTargetPieces ? `min ${ord.minTargetPieces} ks` : '—')}
+                                </span>
+                                <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                                  {pct}%
+                                </span>
+                              </div>
+                              <div className="w-36 bg-stone-200 rounded-full h-1.5 mt-1.5 overflow-hidden">
+                                <div className="bg-emerald-600 h-1.5 rounded-full" style={{ width: `${pct}%` }} />
+                              </div>
+                            </td>
+
+                            {/* Místo realizace */}
+                            <td className="px-5 py-3.5 text-xs text-stone-700">
+                              <span className="inline-flex items-center gap-1 font-semibold">
+                                📍 {ord.workplaceMode || 'Na dílně'}
+                              </span>
+                            </td>
+
+                            {/* Přiřazení brigádníci */}
+                            <td className="px-5 py-3.5 text-xs text-stone-700">
+                              {assignedForThisOrder.length > 0 ? (
+                                <div className="space-y-1">
+                                  {assignedForThisOrder.slice(0, 2).map(a => (
+                                    <div key={a.id} className="flex items-center gap-1 text-[11px]">
+                                      <span className="font-bold text-stone-900">{a.employeeName}</span>
+                                      <span className="text-stone-500 font-mono">({a.assignedPieces} ks)</span>
+                                    </div>
+                                  ))}
+                                  {assignedForThisOrder.length > 2 && (
+                                    <span className="text-[10px] text-stone-400 italic">
+                                      + dalších {assignedForThisOrder.length - 2} brigádníků
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-stone-400 italic">Zatím nepřiřazeni</span>
+                              )}
+                            </td>
+
+                            {/* Akce: Zakázkový list */}
+                            <td className="px-4 py-3.5 text-right">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenOrderSheet(ord);
+                                }}
+                                className="px-3 py-1.5 bg-[#193F34] hover:bg-[#285446] text-[#F7F3E9] rounded-xl text-xs font-bold flex items-center gap-1 ml-auto cursor-pointer shadow-xs transition-colors"
+                              >
+                                <Printer className="w-3.5 h-3.5 text-[#D7BE97]" />
+                                <span>Zakázkový list</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+
+                    {orders.filter(ord => orderArchiveView === 'active' ? ord.isActive !== false : ord.isActive === false).length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-12 text-center text-stone-500">
+                          {orderArchiveView === 'active' ? 'Žádné aktivní zakázky v systému.' : 'Archiv je prázdný.'}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* PŘEHLED DEFINOVANÝCH OPERACÍ A PŘIŘAZENÝCH BRIGÁDNÍKŮ NA ZAKÁZKY */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Soupis operací s rozlišením Finální fáze vs Pomocné práce */}
+              <div className="bg-white/95 border border-stone-300 rounded-2xl p-5 shadow-sm space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-stone-200">
+                  <h4 className="font-heading font-bold text-sm text-[#193F34] flex items-center gap-2">
+                    <Settings className="w-4 h-4 text-amber-600" />
+                    <span>Číselník výrobních operací ({operations.length})</span>
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setOpenOrderForm('newOp')}
+                    className="text-xs font-bold text-emerald-800 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Přidat</span>
+                  </button>
+                </div>
+
+                <div className="divide-y divide-stone-200 max-h-80 overflow-y-auto pr-1">
+                  {operations.map(op => (
+                    <div key={op.id} className="py-2.5 flex items-center justify-between gap-3 text-xs">
+                      <div>
+                        <span className="font-bold text-stone-900 block text-sm">{op.name}</span>
+                        <div className="flex items-center gap-2 text-stone-500 mt-0.5 font-mono">
+                          <span>Norma: {op.normPerHour} ks/h</span>
+                          <span>•</span>
+                          <span className="font-bold text-emerald-800">{op.ratePerPiece.toFixed(2)} Kč/ks</span>
+                          {op.orderName && (
+                            <span className="px-1.5 py-0.2 rounded bg-stone-100 text-[10px] font-sans">
+                              {op.orderName}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        op.operationStage === 'Auxiliary'
+                          ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                          : 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                      }`}>
+                        {op.operationStage === 'Auxiliary' ? 'Pomocné práce' : 'Finální fáze'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Seznam přiřazených brigádníků na zakázky */}
+              <div className="bg-white/95 border border-stone-300 rounded-2xl p-5 shadow-sm space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-stone-200">
+                  <h4 className="font-heading font-bold text-sm text-[#193F34] flex items-center gap-2">
+                    <UserCheck className="w-4 h-4 text-sky-600" />
+                    <span>Aktivní přiřazení brigádníků ({orderAssignments.length})</span>
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setOpenOrderForm('assignWorker')}
+                    className="text-xs font-bold text-emerald-800 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Přiřadit</span>
+                  </button>
+                </div>
+
+                <div className="divide-y divide-stone-200 max-h-80 overflow-y-auto pr-1">
+                  {orderAssignments.map(a => (
+                    <div key={a.id} className="py-2.5 flex items-center justify-between gap-3 text-xs">
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-stone-900">{a.employeeName}</span>
+                          <span className="text-stone-400">→</span>
+                          <span className="font-semibold text-emerald-900">{a.orderName}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-stone-500 mt-0.5 text-[11px]">
+                          <span>Úkon: {a.operationName}</span>
+                          <span>•</span>
+                          <span className="font-mono font-bold text-stone-800">Přiděleno: {a.assignedPieces} ks</span>
+                          <span>•</span>
+                          <span>Místo: {a.workplace}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {a.deadlineDate && (
+                          <span className="text-[10px] text-stone-500 font-mono">
+                            do {a.deadlineDate}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteAssignment(a.id)}
+                          className="p-1 text-stone-400 hover:text-rose-600 cursor-pointer"
+                          title="Odebrat přiřazení"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {orderAssignments.length === 0 && (
+                    <div className="py-8 text-center text-xs text-stone-400">
+                      Zatím nebyl k žádné zakázce přiřazen žádný brigádník.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODÁLNÍ OKNO / TISKOVÁ SESTAVA: ZAKÁZKOVÝ LIST */}
+        {selectedOrderSheet && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-white rounded-2xl max-w-4xl w-full p-6 sm:p-8 shadow-2xl space-y-6 max-h-[92vh] overflow-y-auto">
+              {/* Tlačítka horní lišty zakázkového listu */}
+              <div className="flex items-center justify-between pb-4 border-b border-stone-200">
+                <div className="flex items-center gap-2">
+                  <div className="bg-[#193F34] text-white p-2 rounded-xl">
+                    <FileText className="w-5 h-5 text-[#D7BE97]" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-heading font-bold text-[#193F34]">
+                      Zakázkový list (Výrobní příkaz)
+                    </h2>
+                    <span className="text-xs text-stone-500">
+                      Dokumentace zakázky, operací a přiřazených pracovníků
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="px-4 py-2 bg-[#193F34] hover:bg-[#285446] text-[#F7F3E9] rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer"
+                  >
+                    <Printer className="w-4 h-4 text-[#D7BE97]" />
+                    <span>Vytisknout Zakázkový list (A4)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedOrderSheet(null);
+                      setOrderSheetDetail(null);
+                    }}
+                    className="p-1.5 rounded-xl text-stone-400 hover:text-stone-600 cursor-pointer"
+                  >
+                    <XCircle className="w-6 h-6" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Tělo Zakázkového listu */}
+              <div className="space-y-6 text-stone-900">
+                {/* Hlavička zakázky */}
+                <div className="p-5 bg-stone-50 rounded-2xl border border-stone-200 grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <span className="text-[11px] font-bold uppercase text-stone-400 block">Zakázka</span>
+                    <span className="text-base font-bold text-[#193F34] block">{selectedOrderSheet.name}</span>
+                    <span className="text-xs text-stone-600 mt-1 block">{selectedOrderSheet.description || 'Bez popisu'}</span>
+                  </div>
+
+                  <div>
+                    <span className="text-[11px] font-bold uppercase text-stone-400 block">Termíny & Místo</span>
+                    <span className="text-xs font-medium text-stone-800 block mt-0.5">
+                      Zahájení: {selectedOrderSheet.startDate || '—'}
+                    </span>
+                    <span className="text-xs font-bold text-emerald-800 block">
+                      Ukončení: {selectedOrderSheet.endDate || selectedOrderSheet.deadline || '—'}
+                    </span>
+                    <span className="text-xs font-semibold text-stone-700 block mt-1">
+                      Místo realizace: {selectedOrderSheet.workplaceMode || 'Na dílně'}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span className="text-[11px] font-bold uppercase text-stone-400 block">Cílové kusy & Kontakty</span>
+                    <span className="text-xs font-mono font-bold text-stone-900 block mt-0.5">
+                      Min: {selectedOrderSheet.minTargetPieces || '—'} ks | Max: {selectedOrderSheet.maxTargetPieces || selectedOrderSheet.totalPiecesTarget || '—'} ks
+                    </span>
+                    <span className="text-xs text-stone-600 block mt-1">
+                      Koordinátor: {selectedOrderSheet.coordinatorContact || 'Marta Chorobiková'}
+                    </span>
+                    <span className="text-xs text-stone-600 block">
+                      Zákazník: {selectedOrderSheet.customerContact || '—'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Popis balení a Expedice */}
+                {(selectedOrderSheet.packagingDesc || selectedOrderSheet.logisticsDesc) && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {selectedOrderSheet.packagingDesc && (
+                      <div className="p-4 bg-amber-50/60 rounded-xl border border-amber-200">
+                        <span className="font-bold text-xs uppercase text-amber-900 block mb-1">Popis balení</span>
+                        <p className="text-xs text-stone-800">{selectedOrderSheet.packagingDesc}</p>
+                      </div>
+                    )}
+                    {selectedOrderSheet.logisticsDesc && (
+                      <div className="p-4 bg-sky-50/60 rounded-xl border border-sky-200">
+                        <span className="font-bold text-xs uppercase text-sky-900 block mb-1">Expedice & Logistika</span>
+                        <p className="text-xs text-stone-800">{selectedOrderSheet.logisticsDesc}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Výrobní operace zakázky */}
+                <div>
+                  <h4 className="font-heading font-bold text-sm text-[#193F34] uppercase tracking-wider mb-2">
+                    Výrobní operace a normy
+                  </h4>
+                  <table className="w-full text-left text-xs border border-stone-200 rounded-xl overflow-hidden">
+                    <thead className="bg-stone-100 font-bold text-stone-600">
+                      <tr>
+                        <th className="px-3 py-2">Operace</th>
+                        <th className="px-3 py-2">Fáze</th>
+                        <th className="px-3 py-2">Norma ks/h</th>
+                        <th className="px-3 py-2">Sazba Kč/ks</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-200">
+                      {operations.filter(op => !op.orderId || op.orderId === selectedOrderSheet.id).map(op => (
+                        <tr key={op.id}>
+                          <td className="px-3 py-2 font-bold text-stone-900">{op.name}</td>
+                          <td className="px-3 py-2">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              op.operationStage === 'Auxiliary' ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900'
+                            }`}>
+                              {op.operationStage === 'Auxiliary' ? 'Pomocné práce' : 'Finální fáze'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 font-mono">{op.normPerHour} ks/h</td>
+                          <td className="px-3 py-2 font-mono font-bold text-emerald-800">{op.ratePerPiece.toFixed(2)} Kč</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Soupis přiřazených brigádníků a plnění */}
+                <div>
+                  <h4 className="font-heading font-bold text-sm text-[#193F34] uppercase tracking-wider mb-2">
+                    Přiřazení brigádníci a stav plnění
+                  </h4>
+                  <table className="w-full text-left text-xs border border-stone-200 rounded-xl overflow-hidden">
+                    <thead className="bg-stone-100 font-bold text-stone-600">
+                      <tr>
+                        <th className="px-3 py-2">Pracovník</th>
+                        <th className="px-3 py-2">Operace</th>
+                        <th className="px-3 py-2">Přiděleno</th>
+                        <th className="px-3 py-2">Hotovo</th>
+                        <th className="px-3 py-2">Místo</th>
+                        <th className="px-3 py-2">Termín předání</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-200">
+                      {orderAssignments.filter(a => a.orderId === selectedOrderSheet.id).map(a => (
+                        <tr key={a.id}>
+                          <td className="px-3 py-2 font-bold text-stone-900">{a.employeeName}</td>
+                          <td className="px-3 py-2">{a.operationName}</td>
+                          <td className="px-3 py-2 font-mono font-bold">{a.assignedPieces} ks</td>
+                          <td className="px-3 py-2 font-mono text-emerald-700 font-bold">{a.donePieces || 0} ks</td>
+                          <td className="px-3 py-2">{a.workplace}</td>
+                          <td className="px-3 py-2 font-mono">{a.deadlineDate || '—'}</td>
+                        </tr>
+                      ))}
+                      {orderAssignments.filter(a => a.orderId === selectedOrderSheet.id).length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="px-3 py-6 text-center text-stone-400 italic">
+                            K této zakázce zatím nejsou přiřazeni žádní brigádníci.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Spodní akce */}
+              <div className="pt-4 border-t border-stone-200 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedOrderSheet(null);
+                    setOrderSheetDetail(null);
+                  }}
+                  className="px-5 py-2 rounded-xl bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold cursor-pointer"
+                >
+                  Zavřít
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

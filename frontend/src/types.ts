@@ -40,6 +40,14 @@ export interface OrderItem {
   completedPieces?: number;
   remainingPieces?: number;
   percentDone?: number;
+  // Fáze 2 rozšíření (docházka.docx):
+  minTargetPieces?: number | null;
+  maxTargetPieces?: number | null;
+  packagingDesc?: string;
+  logisticsDesc?: string;
+  coordinatorContact?: string;
+  customerContact?: string;
+  workplaceMode?: 'Na dílně' | 'Doma';
 }
 
 export interface OperationItem {
@@ -50,6 +58,26 @@ export interface OperationItem {
   isActive?: boolean;
   orderId?: number | null;
   orderName?: string;
+  operationStage?: 'Auxiliary' | 'Final'; // Pomocné práce vs Finální fáze
+}
+
+export interface OrderAssignmentItem {
+  id: number;
+  orderId: number;
+  orderName?: string;
+  employeeId: number;
+  employeeName?: string;
+  employeeNumber?: string;
+  operationId?: number | null;
+  operationName?: string;
+  assignedPieces: number;
+  assignedAt: string;
+  deadlineDate?: string | null;
+  workplace: 'Na dílně' | 'Doma';
+  status: string;
+  note?: string;
+  donePieces?: number;
+  remainingPieces?: number;
 }
 
 export interface OrderParticipantItem {
