@@ -209,6 +209,37 @@ export interface DocumentItem {
   hasFullText?: boolean;
   isActive: boolean;
   createdAt: string;
+  targetEmployeeId?: number | null;
+  targetEmployeeName?: string;
+  targetEmployeeNumber?: string;
+  documentType?: 'General' | 'Directive' | 'Notice' | 'Payslip' | 'MaterialHandover' | 'DefectProtocol';
+  periodYear?: number | null;
+  periodMonth?: number | null;
+  fileName?: string | null;
+  hasFile?: boolean;
+  requiresSignature?: boolean;
+  priority?: 'Normal' | 'High' | 'Urgent';
+  consentCount?: number;
+  confirmedAt?: string | null;
+}
+
+export interface PayslipBatchResultItem {
+  fileName: string;
+  success: boolean;
+  employeeId?: number;
+  employeeName?: string;
+  employeeNumber?: string;
+  year?: number;
+  month?: number;
+  error?: string;
+}
+
+export interface PayslipBatchResponse {
+  success: boolean;
+  totalCount: number;
+  successCount: number;
+  failCount: number;
+  results: PayslipBatchResultItem[];
 }
 
 export interface DocumentConsentItem {

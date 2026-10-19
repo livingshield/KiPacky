@@ -46,7 +46,11 @@ import {
   Info,
   CalendarRange,
   Clock3,
-  X
+  X,
+  Download,
+  FileUp,
+  Sparkles,
+  BookOpen
 } from 'lucide-react';
 import {
   Employee,
@@ -57,7 +61,11 @@ import {
   OrderMaterialItem,
   MaterialDispatchItem,
   AttendanceLogItem,
-  ProductionLogItem
+  ProductionLogItem,
+  DocumentItem,
+  DocumentConsentItem,
+  PayslipBatchResponse,
+  PayslipBatchResultItem
 } from '../types';
 import {
   fetchEmployees,
@@ -84,7 +92,13 @@ import {
   fetchProductionLogs,
   approveProduction,
   approveAllProduction,
-  deleteProductionLog
+  deleteProductionLog,
+  fetchDocuments,
+  saveDocument,
+  deleteDocument,
+  fetchDocumentFile,
+  uploadPayslipsBatch,
+  fetchDocumentConsents
 } from '../api/client';
 import { GREENBERG_LOGO } from '../assets/logoBase64';
 import { APP_VERSION } from '../version';
@@ -238,6 +252,34 @@ export const AdminV2Page: React.FC<AdminV2PageProps> = ({ onLogout, onGoToKiosk,
   // Tisk Zmetkového protokolu A4
   const [selectedDefectLog, setSelectedDefectLog] = useState<ProductionLogItem | null>(null);
 
+  // FÁZE 5: ADMINISTRATIVA, NÁSTĚNKA (🔔) & SMĚRNICE
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [loadingDocuments, setLoadingDocuments] = useState(false);
+  const [documentConsents, setDocumentConsents] = useState<DocumentConsentItem[]>([]);
+  const [adminDocSubTab, setAdminDocSubTab] = useState<'notices' | 'directives' | 'consents'>('notices');
+  const [openNewDocForm, setOpenNewDocForm] = useState(false);
+  const [docTitle, setDocTitle] = useState('');
+  const [docShortText, setDocShortText] = useState('');
+  const [docFullText, setDocFullText] = useState('');
+  const [docType, setDocType] = useState<'Notice' | 'Directive' | 'General'>('Notice');
+  const [docPriority, setDocPriority] = useState<'Normal' | 'High' | 'Urgent'>('Normal');
+  const [docTargetEmpId, setDocTargetEmpId] = useState<string>('all');
+  const [docRequiresSignature, setDocRequiresSignature] = useState(true);
+  const [viewingDoc, setViewingDoc] = useState<DocumentItem | null>(null);
+
+  // FÁZE 5: MĚSÍČNÍ VÝKAZY & VÝPLATNÍ PÁSKY (PDF PÁROVÁNÍ)
+  const [reportYear, setReportYear] = useState<number>(new Date().getFullYear());
+  const [reportMonth, setReportMonth] = useState<number>(new Date().getMonth() + 1);
+  const [reportEmpFilter, setReportEmpFilter] = useState<string>('all');
+  const [payslips, setPayslips] = useState<DocumentItem[]>([]);
+  const [loadingPayslips, setLoadingPayslips] = useState(false);
+  const [uploadingPayslips, setUploadingPayslips] = useState(false);
+  const [payslipBatchResult, setPayslipBatchResult] = useState<PayslipBatchResponse | null>(null);
+  const [viewingPayslipDoc, setViewingPayslipDoc] = useState<DocumentItem | null>(null);
+  const [viewingPayslipFile, setViewingPayslipFile] = useState<{ fileName: string; fileBase64: string } | null>(null);
+  const [loadingPdf, setLoadingPdf] = useState(false);
+  const [showPrintMonthlySummary, setShowPrintMonthlySummary] = useState(false);
+
   // Notifikace / zpětná vazba
   const [statusMsg, setStatusMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
@@ -276,14 +318,44 @@ export const AdminV2Page: React.FC<AdminV2PageProps> = ({ onLogout, onGoToKiosk,
     }
   };
 
+  const loadDocuments = async () => {
+    setLoadingDocuments(true);
+    try {
+      const [docs, consents] = await Promise.all([
+        fetchDocuments().catch(() => []),
+        fetchDocumentConsents().catch(() => [])
+      ]);
+      setDocuments(docs);
+      setDocumentConsents(consents);
+    } catch {
+      showNotification('Nepodařilo se načíst dokumenty', 'error');
+    } finally {
+      setLoadingDocuments(false);
+    }
+  };
+
+  const loadPayslips = async () => {
+    setLoadingPayslips(true);
+    try {
+      const pDocs = await fetchDocuments({ type: 'Payslip', year: reportYear, month: reportMonth });
+      setPayslips(pDocs);
+    } catch {
+      showNotification('Nepodařilo se načíst výplatní pásky', 'error');
+    } finally {
+      setLoadingPayslips(false);
+    }
+  };
+
   const loadData = async () => {
     setLoadingEmployees(true);
     setLoadingOrders(true);
     setLoadingMaterials(true);
     setLoadingAttendance(true);
     setLoadingProduction(true);
+    setLoadingDocuments(true);
+    setLoadingPayslips(true);
     try {
-      const [empData, ordData, opData, assignData, matData, dispData, attData, prodData] = await Promise.all([
+      const [empData, ordData, opData, assignData, matData, dispData, attData, prodData, docData, consentData, payslipData] = await Promise.all([
         fetchEmployees().catch(() => []),
         fetchOrders().catch(() => []),
         fetchOperations().catch(() => []),
@@ -291,7 +363,10 @@ export const AdminV2Page: React.FC<AdminV2PageProps> = ({ onLogout, onGoToKiosk,
         fetchOrderMaterials().catch(() => []),
         fetchMaterialDispatches().catch(() => []),
         fetchAttendanceLogs().catch(() => []),
-        fetchProductionLogs().catch(() => [])
+        fetchProductionLogs().catch(() => []),
+        fetchDocuments().catch(() => []),
+        fetchDocumentConsents().catch(() => []),
+        fetchDocuments({ type: 'Payslip', year: reportYear, month: reportMonth }).catch(() => [])
       ]);
       setEmployees(empData);
       setOrders(ordData);
@@ -301,6 +376,9 @@ export const AdminV2Page: React.FC<AdminV2PageProps> = ({ onLogout, onGoToKiosk,
       setDispatches(dispData);
       setAttendanceLogs(attData);
       setProductionLogs(prodData);
+      setDocuments(docData);
+      setDocumentConsents(consentData);
+      setPayslips(payslipData);
     } catch {
       showNotification('Nepodařilo se načíst data ze serveru', 'error');
     } finally {
@@ -309,7 +387,150 @@ export const AdminV2Page: React.FC<AdminV2PageProps> = ({ onLogout, onGoToKiosk,
       setLoadingMaterials(false);
       setLoadingAttendance(false);
       setLoadingProduction(false);
+      setLoadingDocuments(false);
+      setLoadingPayslips(false);
     }
+  };
+
+  // Handlery pro Administrativu & Nástěnku
+  const handleSaveDocSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!docTitle.trim()) {
+      showNotification('Vyplňte prosím název dokumentu / oznámení', 'error');
+      return;
+    }
+    try {
+      await saveDocument({
+        title: docTitle.trim(),
+        shortText: docShortText.trim() || docTitle.trim(),
+        content: docShortText.trim() || docTitle.trim(),
+        fullText: docFullText.trim(),
+        isActive: true,
+        documentType: docType,
+        priority: docPriority,
+        targetEmployeeId: docTargetEmpId !== 'all' ? parseInt(docTargetEmpId, 10) : null,
+        requiresSignature: docRequiresSignature
+      });
+      showNotification('Dokument / oznámení bylo úspěšně zveřejněno.');
+      setOpenNewDocForm(false);
+      setDocTitle('');
+      setDocShortText('');
+      setDocFullText('');
+      setDocType('Notice');
+      setDocPriority('Normal');
+      setDocTargetEmpId('all');
+      setDocRequiresSignature(true);
+      loadDocuments();
+    } catch (err: any) {
+      showNotification(err.message || 'Chyba při ukládání dokumentu', 'error');
+    }
+  };
+
+  const handleDeleteDoc = async (id: number) => {
+    if (!window.confirm('Opravdu chcete archivovat / odstranit tento dokument?')) return;
+    try {
+      await deleteDocument(id);
+      showNotification('Dokument byl archivován.');
+      loadDocuments();
+      loadPayslips();
+    } catch (err: any) {
+      showNotification(err.message || 'Chyba při mazání dokumentu', 'error');
+    }
+  };
+
+  // Handlery pro Hromadný upload výplatních pásek (PDF)
+  const handlePayslipsFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setUploadingPayslips(true);
+    setPayslipBatchResult(null);
+
+    const payslipList: Array<{ fileName: string; fileBase64: string }> = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!file.name.toLowerCase().endsWith('.pdf')) continue;
+
+      const base64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const res = reader.result as string;
+          const commaIdx = res.indexOf(',');
+          resolve(commaIdx >= 0 ? res.substring(commaIdx + 1) : res);
+        };
+        reader.readAsDataURL(file);
+      });
+
+      payslipList.push({ fileName: file.name, fileBase64: base64 });
+    }
+
+    if (payslipList.length === 0) {
+      showNotification('Nebyly vybrány žádné platné PDF soubory.', 'error');
+      setUploadingPayslips(false);
+      return;
+    }
+
+    try {
+      const res = await uploadPayslipsBatch(payslipList);
+      setPayslipBatchResult(res);
+      showNotification(`Zpracováno ${res.totalCount} souborů (${res.successCount} úspěšně spárováno, ${res.failCount} chyb).`);
+      loadPayslips();
+      loadData();
+    } catch (err: any) {
+      showNotification(err.message || 'Chyba při nahrávání výplatních pásek', 'error');
+    } finally {
+      setUploadingPayslips(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleOpenPayslip = async (doc: DocumentItem) => {
+    setViewingPayslipDoc(doc);
+    setLoadingPdf(true);
+    setViewingPayslipFile(null);
+    try {
+      const file = await fetchDocumentFile(doc.id);
+      setViewingPayslipFile(file);
+    } catch (err: any) {
+      showNotification(err.message || 'Chyba při stahování výplatní pásky', 'error');
+    } finally {
+      setLoadingPdf(false);
+    }
+  };
+
+  const handleDownloadCsv = () => {
+    const targetEmployees = employees.filter((emp) => {
+      if (reportEmpFilter !== 'all' && emp.id.toString() !== reportEmpFilter) return false;
+      return true;
+    });
+
+    let csvContent = '\uFEFF'; // UTF-8 BOM
+    csvContent += 'Osobní číslo;Jméno a příjmení;Typ smlouvy;Bankovní účet;Schválené kusy;Hrubá odměna Kč;Normohodiny (135 Kč/h);Výplatní páska PDF\r\n';
+
+    targetEmployees.forEach((emp) => {
+      const normed = computeNormedShiftsForEmployee(emp.id, reportYear, reportMonth);
+      const hasPayslip = payslips.some((p) => p.targetEmployeeId === emp.id);
+      const row = [
+        emp.employeeNumber || '',
+        `"${emp.fullName.replace(/"/g, '""')}"`,
+        emp.contractType,
+        emp.bankAccount || '',
+        normed.totalPieces,
+        normed.totalEarned,
+        normed.totalNormHours.toFixed(2),
+        hasPayslip ? 'Nahrána' : 'Chybí'
+      ].join(';');
+      csvContent += row + '\r\n';
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Kipacky_Vyplatni_Prehled_${reportYear}_${String(reportMonth).padStart(2, '0')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // Handlery pro docházku
@@ -4596,23 +4817,804 @@ export const AdminV2Page: React.FC<AdminV2PageProps> = ({ onLogout, onGoToKiosk,
           </div>
         )}
 
+        {/* FÁZE 5: ZÁLOŽKA ADMINISTRATIVA & NÁSTĚNKA (🔔) */}
         {activeTab === 'admin' && (
-          <div className="bg-white/95 border border-stone-300 rounded-2xl p-8 text-center space-y-3">
-            <Bell className="w-12 h-12 text-indigo-600 mx-auto" />
-            <h3 className="font-heading font-bold text-xl text-[#193F34]">Fáze 5: Administrativa & Nástěnka (🔔)</h3>
-            <p className="text-sm text-stone-600 max-w-lg mx-auto">
-              Vkládání směrnic a oznámení se zvonečkem pro brigádníky na kiosku.
-            </p>
+          <div className="space-y-6">
+            {/* Horní lišta: Pod-pohledy + Tlačítko pro nové oznámení / směrnici */}
+            <div className="bg-white/95 border border-stone-200 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex bg-stone-100 p-1 rounded-xl self-start">
+                <button
+                  type="button"
+                  onClick={() => setAdminDocSubTab('notices')}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                    adminDocSubTab === 'notices'
+                      ? 'bg-indigo-700 text-white shadow-sm'
+                      : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  <Bell className="w-3.5 h-3.5" />
+                  <span>Provozní oznámení na nástěnku (🔔)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdminDocSubTab('directives')}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                    adminDocSubTab === 'directives'
+                      ? 'bg-[#193F34] text-white shadow-sm'
+                      : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>Vnitřní směrnice & BOZP</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdminDocSubTab('consents')}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                    adminDocSubTab === 'consents'
+                      ? 'bg-emerald-700 text-white shadow-sm'
+                      : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  <FileCheck className="w-3.5 h-3.5" />
+                  <span>Prezenční listina podpisů</span>
+                </button>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setOpenNewDocForm(!openNewDocForm)}
+                  className="px-4 py-2 rounded-xl bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-bold flex items-center gap-2 shadow-sm cursor-pointer ml-auto"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>{openNewDocForm ? 'Zavřít formulář' : 'Vložit nové oznámení / směrnici'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Sbalený formulář pro vložení nového oznámení / směrnice */}
+            {openNewDocForm && (
+              <div className="bg-white/95 border-2 border-indigo-200 rounded-2xl p-6 shadow-md space-y-4 animate-in fade-in">
+                <div className="flex items-center justify-between border-b border-stone-200 pb-3">
+                  <h4 className="font-heading font-bold text-sm text-indigo-950 uppercase tracking-wider flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-indigo-600" />
+                    <span>Zveřejnit nové oznámení na nástěnku nebo vnitřní směrnici</span>
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setOpenNewDocForm(false)}
+                    className="p-1 rounded-lg text-stone-400 hover:text-stone-600 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveDocSubmit} className="space-y-4 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="block font-bold text-stone-700 mb-1">Název dokumentu / oznámení *</label>
+                      <input
+                        type="text"
+                        placeholder="např. Změna organizace směn od příštího týdne"
+                        value={docTitle}
+                        onChange={(e) => setDocTitle(e.target.value)}
+                        required
+                        className="w-full px-3 py-2 border border-stone-300 rounded-xl font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">Typ dokumentu</label>
+                      <select
+                        value={docType}
+                        onChange={(e) => setDocType(e.target.value as any)}
+                        className="w-full px-3 py-2 border border-stone-300 rounded-xl font-semibold bg-white"
+                      >
+                        <option value="Notice">🔔 Oznámení na nástěnku</option>
+                        <option value="Directive">📜 Vnitřní směrnice / BOZP</option>
+                        <option value="General">📄 Obecný provozní dokument</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">Priorita zobrazení</label>
+                      <select
+                        value={docPriority}
+                        onChange={(e) => setDocPriority(e.target.value as any)}
+                        className="w-full px-3 py-2 border border-stone-300 rounded-xl font-semibold bg-white"
+                      >
+                        <option value="Normal">Běžná priorita</option>
+                        <option value="High">⚠️ Důležité (zvýrazněno žlutě)</option>
+                        <option value="Urgent">🚨 Kritické (povinné vyskakovací okno na kiosku)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">Cílový příjemce</label>
+                      <select
+                        value={docTargetEmpId}
+                        onChange={(e) => setDocTargetEmpId(e.target.value)}
+                        className="w-full px-3 py-2 border border-stone-300 rounded-xl font-semibold bg-white"
+                      >
+                        <option value="all">Všichni brigádníci ({employees.length})</option>
+                        {employees.map((emp) => (
+                          <option key={emp.id} value={emp.id.toString()}>
+                            {emp.fullName} {emp.employeeNumber ? `(#${emp.employeeNumber})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex items-center pt-5">
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={docRequiresSignature}
+                          onChange={(e) => setDocRequiresSignature(e.target.checked)}
+                          className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span className="font-bold text-stone-800 text-xs">Vyžadovat elektronické seznámení na kiosku</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-stone-700 mb-1">
+                      Krátký přehled / Text oznámení (zobrazí se na nástěnce u zvonečku 🔔)
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="Stručný vzkaz nebo hlavní sdělení pro brigádníky na dílně..."
+                      value={docShortText}
+                      onChange={(e) => setDocShortText(e.target.value)}
+                      className="w-full px-3 py-2 border border-stone-300 rounded-xl"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-stone-700 mb-1">
+                      Plné znění dokumentu / směrnice <span className="text-stone-400 font-normal">(nepovinné, pro podrobné instrukce)</span>
+                    </label>
+                    <textarea
+                      rows={4}
+                      placeholder="Kompletní metodický postup, bezpečnostní pokyny nebo znění směrnice..."
+                      value={docFullText}
+                      onChange={(e) => setDocFullText(e.target.value)}
+                      className="w-full px-3 py-2 border border-stone-300 rounded-xl font-mono text-[11px]"
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2 border-t border-stone-200">
+                    <button
+                      type="button"
+                      onClick={() => setOpenNewDocForm(false)}
+                      className="px-4 py-2 rounded-xl bg-stone-200 hover:bg-stone-300 text-stone-800 font-bold cursor-pointer"
+                    >
+                      Zrušit
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2 rounded-xl bg-indigo-700 hover:bg-indigo-800 text-white font-bold cursor-pointer shadow-sm"
+                    >
+                      Publikovat dokument
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* POHLED 1: NÁSTĚNKA & OZNÁMENÍ (🔔) */}
+            {adminDocSubTab === 'notices' && (
+              <div className="space-y-4">
+                {(() => {
+                  const notices = documents.filter((d) => d.documentType === 'Notice' || d.documentType === 'General' || !d.documentType);
+                  if (notices.length === 0) {
+                    return (
+                      <div className="bg-white/95 border border-stone-200 rounded-2xl p-12 text-center text-stone-500 italic">
+                        Na nástěnce zatím nejsou zveřejněna žádná aktivní oznámení.
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {notices.map((doc) => (
+                        <div
+                          key={doc.id}
+                          className={`bg-white/95 border rounded-2xl p-5 shadow-sm space-y-3 transition-all ${
+                            doc.priority === 'Urgent'
+                              ? 'border-rose-300 bg-rose-50/20 ring-1 ring-rose-200'
+                              : doc.priority === 'High'
+                              ? 'border-amber-300 bg-amber-50/20'
+                              : 'border-stone-200'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-2.5">
+                              <div
+                                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                                  doc.priority === 'Urgent'
+                                    ? 'bg-rose-100 text-rose-700'
+                                    : doc.priority === 'High'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-indigo-100 text-indigo-700'
+                                }`}
+                              >
+                                <Bell className="w-5 h-5" />
+                              </div>
+                              <div>
+                                <h4 className="font-heading font-bold text-sm text-stone-900 leading-tight">
+                                  {doc.title}
+                                </h4>
+                                <span className="text-[10px] text-stone-500 block mt-0.5">
+                                  Zveřejněno: {new Date(doc.createdAt).toLocaleDateString('cs-CZ')}
+                                </span>
+                              </div>
+                            </div>
+
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                doc.priority === 'Urgent'
+                                  ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                  : doc.priority === 'High'
+                                  ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                  : 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                              }`}
+                            >
+                              {doc.priority === 'Urgent' ? '🚨 Kritické' : doc.priority === 'High' ? '⚠️ Důležité' : '🔔 Oznámení'}
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-stone-700 leading-relaxed bg-stone-50 p-3 rounded-xl border border-stone-200/80">
+                            {doc.shortText || doc.content}
+                          </p>
+
+                          <div className="flex items-center justify-between text-xs pt-1 border-t border-stone-100 text-stone-500">
+                            <div>
+                              <span>Cílová skupina: </span>
+                              <strong className="text-stone-800">
+                                {doc.targetEmployeeName ? `${doc.targetEmployeeName} (#${doc.targetEmployeeNumber})` : 'Všichni brigádníci'}
+                              </strong>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {doc.requiresSignature && (
+                                <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                  ✓ {doc.consentCount || 0} potvrzení
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setViewingDoc(doc)}
+                                className="px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-[11px] cursor-pointer"
+                              >
+                                Detail
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteDoc(doc.id)}
+                                className="p-1 rounded-lg hover:bg-rose-100 text-rose-600 cursor-pointer"
+                                title="Archivovat / smazat"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* POHLED 2: VNITŘNÍ SMĚRNICE & BOZP (📜) */}
+            {adminDocSubTab === 'directives' && (
+              <div className="space-y-4">
+                {(() => {
+                  const directives = documents.filter((d) => d.documentType === 'Directive');
+                  if (directives.length === 0) {
+                    return (
+                      <div className="bg-white/95 border border-stone-200 rounded-2xl p-12 text-center text-stone-500 italic">
+                        Zatím nebyly vloženy žádné vnitřní směrnice ani bezpečnostní předpisy BOZP.
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="bg-white/95 border border-stone-200 rounded-2xl shadow-sm overflow-hidden">
+                      <div className="p-4 border-b border-stone-200">
+                        <h4 className="font-heading font-bold text-sm text-[#193F34] uppercase tracking-wider flex items-center gap-2">
+                          <BookOpen className="w-4 h-4 text-emerald-800" />
+                          <span>Závazné vnitřní směrnice a předpisy BOZP pro brigádníky</span>
+                        </h4>
+                      </div>
+
+                      <div className="divide-y divide-stone-200">
+                        {directives.map((doc) => (
+                          <div key={doc.id} className="p-4 hover:bg-stone-50/80 transition-colors flex items-center justify-between gap-4">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <h5 className="font-bold text-sm text-stone-900">{doc.title}</h5>
+                                <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                  Platná směrnice
+                                </span>
+                              </div>
+                              <p className="text-xs text-stone-600 max-w-2xl">{doc.shortText}</p>
+                              <div className="flex items-center gap-3 text-[11px] text-stone-500">
+                                <span>Vloženo: {new Date(doc.createdAt).toLocaleDateString('cs-CZ')}</span>
+                                <span>•</span>
+                                <span>Stav seznámení: <strong className="text-emerald-800">{doc.consentCount || 0} brigádníků</strong></span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setViewingDoc(doc)}
+                                className="px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Číst směrnici & podpisy</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteDoc(doc.id)}
+                                className="p-1.5 rounded-lg hover:bg-rose-100 text-rose-600 cursor-pointer"
+                                title="Archivovat směrnici"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* POHLED 3: PREZENČNÍ LISTINA PODPISŮ (✍️) */}
+            {adminDocSubTab === 'consents' && (
+              <div className="bg-white/95 border border-stone-200 rounded-2xl shadow-sm overflow-hidden">
+                <div className="p-4 border-b border-stone-200 flex items-center justify-between">
+                  <h4 className="font-heading font-bold text-sm text-[#193F34] uppercase tracking-wider flex items-center gap-2">
+                    <FileCheck className="w-4 h-4 text-emerald-800" />
+                    <span>Auditní přehled elektronických podpisů a seznámení z kiosku</span>
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={loadDocuments}
+                    className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500 cursor-pointer"
+                    title="Obnovit data"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${loadingDocuments ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#193F34] text-[#F7F3E9] font-bold uppercase tracking-wider text-[11px]">
+                      <tr>
+                        <th className="px-4 py-3">Pracovník</th>
+                        <th className="px-4 py-3">Smlouva</th>
+                        <th className="px-4 py-3">Dokument / Směrnice</th>
+                        <th className="px-4 py-3">Datum a čas elektronického potvrzení</th>
+                        <th className="px-4 py-3 text-right">Stav</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-200">
+                      {documentConsents.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="px-4 py-12 text-center text-stone-500 italic">
+                            Zatím nebyly zaznamenány žádné elektronické podpisy.
+                          </td>
+                        </tr>
+                      ) : (
+                        documentConsents.map((c) => (
+                          <tr key={c.id} className="hover:bg-stone-50">
+                            <td className="px-4 py-3 font-bold text-stone-900">{c.employeeName}</td>
+                            <td className="px-4 py-3 text-stone-600 font-mono">{c.contractType}</td>
+                            <td className="px-4 py-3 font-semibold text-stone-800">{c.documentTitle}</td>
+                            <td className="px-4 py-3 font-mono text-emerald-850">
+                              {new Date(c.agreedAt).toLocaleString('cs-CZ')}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200 text-[11px]">
+                                ✅ Podepsáno na kiosku
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
+        {/* FÁZE 5: ZÁLOŽKA MĚSÍČNÍ VÝKAZY & AUTOMATICKÉ PÁROVÁNÍ VÝPLATNÍCH PÁSEK */}
         {activeTab === 'reports' && (
-          <div className="bg-white/95 border border-stone-300 rounded-2xl p-8 text-center space-y-3">
-            <FileSpreadsheet className="w-12 h-12 text-emerald-700 mx-auto" />
-            <h3 className="font-heading font-bold text-xl text-[#193F34]">Fáze 5: Měsíční výkazy & Automatické párování výplatních pásek</h3>
-            <p className="text-sm text-stone-600 max-w-lg mx-auto">
-              Hromadný import PDF výplatních pásek od účetní ve formátu <code>personalnicislo_RR_MM.pdf</code> s automatickým přiřazením k zaměstnanci.
-            </p>
+          <div className="space-y-6">
+            {/* Horní lišta s filtry období a akčními tlačítky */}
+            <div className="bg-white/95 border border-stone-200 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Měsíc a Rok */}
+                <div className="flex items-center gap-1.5 bg-stone-50 px-3 py-1.5 rounded-xl border border-stone-200">
+                  <CalendarRange className="w-3.5 h-3.5 text-stone-500" />
+                  <select
+                    value={reportMonth}
+                    onChange={(e) => {
+                      const m = parseInt(e.target.value, 10);
+                      setReportMonth(m);
+                    }}
+                    className="bg-transparent text-xs font-bold text-stone-800 focus:outline-none cursor-pointer"
+                  >
+                    {[
+                      { m: 1, n: 'Leden' },
+                      { m: 2, n: 'Únor' },
+                      { m: 3, n: 'Březen' },
+                      { m: 4, n: 'Duben' },
+                      { m: 5, n: 'Květen' },
+                      { m: 6, n: 'Červen' },
+                      { m: 7, n: 'Červenec' },
+                      { m: 8, n: 'Srpen' },
+                      { m: 9, n: 'Září' },
+                      { m: 10, n: 'Říjen' },
+                      { m: 11, n: 'Listopad' },
+                      { m: 12, n: 'Prosinec' }
+                    ].map((item) => (
+                      <option key={item.m} value={item.m}>{item.n}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={reportYear}
+                    onChange={(e) => {
+                      const y = parseInt(e.target.value, 10);
+                      setReportYear(y);
+                    }}
+                    className="bg-transparent text-xs font-bold text-stone-800 focus:outline-none cursor-pointer border-l border-stone-200 pl-1.5 ml-1"
+                  >
+                    <option value={2025}>2025</option>
+                    <option value={2026}>2026</option>
+                    <option value={2027}>2027</option>
+                  </select>
+                </div>
+
+                {/* Filtr pracovníka */}
+                <div className="flex items-center gap-1.5 bg-stone-50 px-3 py-1.5 rounded-xl border border-stone-200">
+                  <Users className="w-3.5 h-3.5 text-stone-500" />
+                  <select
+                    value={reportEmpFilter}
+                    onChange={(e) => setReportEmpFilter(e.target.value)}
+                    className="bg-transparent text-xs font-semibold text-stone-800 focus:outline-none cursor-pointer max-w-[200px]"
+                  >
+                    <option value="all">Všichni pracovníci ({employees.length})</option>
+                    {employees.map((emp) => (
+                      <option key={emp.id} value={emp.id.toString()}>
+                        {emp.fullName} {emp.employeeNumber ? `(#${emp.employeeNumber})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Tlačítka pro export CSV a tisk A4 */}
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleDownloadCsv}
+                  className="px-3.5 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  title="Stáhnout kompletní výkaz v CSV (Excel kompatibilní)"
+                >
+                  <Download className="w-4 h-4 text-emerald-700" />
+                  <span>Stáhnout CSV</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPrintMonthlySummary(true)}
+                  className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-2 shadow-sm cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Vytisknout mzdový přehled (A4)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* KPI Karty pro zvolený měsíc */}
+            {(() => {
+              const targetEmployees = employees.filter((emp) => {
+                if (reportEmpFilter !== 'all' && emp.id.toString() !== reportEmpFilter) return false;
+                return true;
+              });
+
+              let sumPieces = 0;
+              let sumEarned = 0;
+              let sumNormH = 0;
+              let payslipsUploaded = 0;
+
+              targetEmployees.forEach((emp) => {
+                const normed = computeNormedShiftsForEmployee(emp.id, reportYear, reportMonth);
+                sumPieces += normed.totalPieces;
+                sumEarned += normed.totalEarned;
+                sumNormH += normed.totalNormHours;
+                if (payslips.some((p) => p.targetEmployeeId === emp.id)) {
+                  payslipsUploaded++;
+                }
+              });
+
+              return (
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                  <div className="bg-white/95 border border-stone-200 p-4 rounded-2xl shadow-sm">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-stone-500 block">Aktivních brigádníků</span>
+                    <span className="text-2xl font-extrabold text-stone-900 font-mono mt-1 block">{targetEmployees.length}</span>
+                    <span className="text-xs text-stone-500 mt-0.5 block">{reportMonth}/{reportYear}</span>
+                  </div>
+                  <div className="bg-white/95 border border-stone-200 p-4 rounded-2xl shadow-sm">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 block">Schválená produkce</span>
+                    <span className="text-2xl font-extrabold text-emerald-800 font-mono mt-1 block">{sumPieces} ks</span>
+                    <span className="text-xs text-stone-500 mt-0.5 block">bez vad k proplacení</span>
+                  </div>
+                  <div className="bg-white/95 border border-stone-200 p-4 rounded-2xl shadow-sm">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-sky-800 block">Normohodiny celkem</span>
+                    <span className="text-2xl font-extrabold text-sky-900 font-mono mt-1 block">{sumNormH.toFixed(1)} h</span>
+                    <span className="text-xs text-stone-500 mt-0.5 block">při normě 135 Kč / h</span>
+                  </div>
+                  <div className="bg-white/95 border border-stone-200 p-4 rounded-2xl shadow-sm">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#9B623F] block">Celková hrubá mzda</span>
+                    <span className="text-2xl font-extrabold text-[#9B623F] font-mono mt-1 block">
+                      {sumEarned.toLocaleString('cs-CZ')} Kč
+                    </span>
+                    <span className="text-xs text-stone-500 mt-0.5 block">k výplatě na účty</span>
+                  </div>
+                  <div className="bg-white/95 border border-indigo-200 p-4 rounded-2xl shadow-sm bg-indigo-50/20">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-800 block">Výplatní pásky PDF</span>
+                    <span className="text-2xl font-extrabold text-indigo-950 font-mono mt-1 block">
+                      {payslipsUploaded} / {targetEmployees.length}
+                    </span>
+                    <span className="text-xs text-indigo-700 mt-0.5 block">
+                      {payslipsUploaded === targetEmployees.length ? '✅ Všechny nahrány' : '⚠️ Některé chybí'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* SEKCE HROMADNÉHO IMPORTU VÝPLATNÍCH PÁSEK (PDF) OD ÚČETNÍ */}
+            <div className="bg-white/95 border-2 border-dashed border-emerald-300 rounded-2xl p-6 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                    <FileUp className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h4 className="font-heading font-bold text-base text-[#193F34]">
+                      Hromadné automatické párování výplatních pásek (PDF)
+                    </h4>
+                    <p className="text-xs text-stone-600 mt-0.5">
+                      Účetní dodá balíček PDF souborů pojmenovaných ve tvaru:{' '}
+                      <code className="bg-emerald-50 text-emerald-900 px-1.5 py-0.5 rounded font-mono font-bold border border-emerald-200">
+                        personalnicislo_RR_MM.pdf
+                      </code>{' '}
+                      (např. <code>1024_26_12.pdf</code> pro os. číslo 1024, rok 2026, měsíc 12).
+                    </p>
+                  </div>
+                </div>
+
+                <label className="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center gap-2 shadow-sm cursor-pointer shrink-0">
+                  <Upload className="w-4 h-4" />
+                  <span>{uploadingPayslips ? 'Nahrávám a páruji...' : 'Vybrat PDF soubory k importu'}</span>
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf"
+                    disabled={uploadingPayslips}
+                    onChange={handlePayslipsFileChange}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+
+              {/* Výsledky posledního hromadného importu */}
+              {payslipBatchResult && (
+                <div className="mt-4 p-4 rounded-xl bg-stone-50 border border-stone-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h5 className="font-heading font-bold text-xs uppercase text-stone-800 tracking-wider">
+                      Výsledky hromadného párování ({payslipBatchResult.successCount} úspěšně / {payslipBatchResult.failCount} chyb)
+                    </h5>
+                    <button
+                      type="button"
+                      onClick={() => setPayslipBatchResult(null)}
+                      className="text-[11px] font-bold text-stone-500 hover:text-stone-800 cursor-pointer"
+                    >
+                      Skrýt hlášení
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+                    {payslipBatchResult.results.map((res, idx) => (
+                      <div
+                        key={idx}
+                        className={`p-2.5 rounded-lg border text-[11px] flex items-center justify-between gap-2 ${
+                          res.success ? 'bg-emerald-50 border-emerald-300 text-emerald-900' : 'bg-rose-50 border-rose-300 text-rose-900'
+                        }`}
+                      >
+                        <div>
+                          <strong className="block font-mono">{res.fileName}</strong>
+                          {res.success ? (
+                            <span className="text-[10px] text-emerald-850">
+                              ✓ {res.employeeName} (#{res.employeeNumber}) • {res.month}/{res.year}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-rose-700 font-semibold">{res.error}</span>
+                          )}
+                        </div>
+                        <span className="text-base">{res.success ? '✅' : '❌'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* TABULKA MĚSÍČNÍHO VÝKAZU & STAV VÝPLATNÍCH PÁSEK */}
+            <div className="bg-white/95 border border-stone-200 rounded-2xl shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-stone-200 flex items-center justify-between">
+                <h4 className="font-heading font-bold text-sm text-[#193F34] uppercase tracking-wider flex items-center gap-2">
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-800" />
+                  <span>Přehled odměn a výplatních pásek brigádníků za {reportMonth}/{reportYear}</span>
+                </h4>
+                <button
+                  type="button"
+                  onClick={loadPayslips}
+                  className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500 cursor-pointer"
+                  title="Obnovit pásky"
+                >
+                  <RefreshCw className={`w-4 h-4 ${loadingPayslips ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-[#193F34] text-[#F7F3E9] font-bold uppercase tracking-wider text-[11px]">
+                    <tr>
+                      <th className="px-4 py-3">Pracovník</th>
+                      <th className="px-4 py-3">Číslo bankovního účtu</th>
+                      <th className="px-4 py-3 text-right">Schváleno kusů</th>
+                      <th className="px-4 py-3 text-right">Normohodiny</th>
+                      <th className="px-4 py-3 text-right">Hrubá mzda</th>
+                      <th className="px-4 py-3">Výplatní páska (PDF)</th>
+                      <th className="px-4 py-3 text-right">Akce</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-200">
+                    {(() => {
+                      const targetEmployees = employees.filter((emp) => {
+                        if (reportEmpFilter !== 'all' && emp.id.toString() !== reportEmpFilter) return false;
+                        return true;
+                      });
+
+                      if (targetEmployees.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={7} className="px-4 py-12 text-center text-stone-500 italic">
+                              Nebyli nalezeni žádní brigádníci odpovídající filtrům.
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      return targetEmployees.map((emp) => {
+                        const normed = computeNormedShiftsForEmployee(emp.id, reportYear, reportMonth);
+                        const empPayslip = payslips.find((p) => p.targetEmployeeId === emp.id);
+
+                        return (
+                          <tr key={emp.id} className="hover:bg-stone-50/80 transition-colors">
+                            {/* Pracovník */}
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-full bg-stone-100 border border-stone-300 flex items-center justify-center overflow-hidden shrink-0">
+                                  {emp.photoUrl ? (
+                                    <img src={emp.photoUrl} alt={emp.fullName} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <span className="text-[11px] font-bold text-stone-600">
+                                      {emp.fullName.slice(0, 2).toUpperCase()}
+                                    </span>
+                                  )}
+                                </div>
+                                <div>
+                                  <span className="font-bold text-stone-900 block">{emp.fullName}</span>
+                                  <span className="text-[10px] text-stone-500 font-mono">
+                                    {emp.employeeNumber ? `#${emp.employeeNumber} • ` : ''}{emp.contractType}
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Bankovní účet */}
+                            <td className="px-4 py-3 font-mono">
+                              {emp.bankAccount ? (
+                                <span className="font-semibold text-stone-900">{emp.bankAccount}</span>
+                              ) : (
+                                <span className="text-amber-800 bg-amber-50 px-2 py-0.5 rounded font-bold text-[10px]">
+                                  ⚠️ Chybí číslo účtu
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Schváleno kusů */}
+                            <td className="px-4 py-3 text-right font-mono font-bold text-stone-800 text-sm">
+                              {normed.totalPieces} ks
+                            </td>
+
+                            {/* Normohodiny */}
+                            <td className="px-4 py-3 text-right font-mono font-bold text-sky-900">
+                              {normed.totalNormHours.toFixed(2)} h
+                            </td>
+
+                            {/* Hrubá mzda */}
+                            <td className="px-4 py-3 text-right font-mono font-extrabold text-emerald-900 text-sm">
+                              {normed.totalEarned.toLocaleString('cs-CZ')} Kč
+                            </td>
+
+                            {/* Výplatní páska (PDF) */}
+                            <td className="px-4 py-3">
+                              {empPayslip ? (
+                                <div className="space-y-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenPayslip(empPayslip)}
+                                    className="px-2.5 py-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-bold flex items-center gap-1.5 cursor-pointer border border-emerald-300 text-[11px]"
+                                    title="Zobrazit výplatní pásku"
+                                  >
+                                    <FileText className="w-3.5 h-3.5 text-emerald-700" />
+                                    <span>{empPayslip.fileName || 'Výplatní páska.pdf'}</span>
+                                  </button>
+                                  <span className="text-[10px] text-stone-500 block">
+                                    Nahráno: {new Date(empPayslip.createdAt).toLocaleDateString('cs-CZ')}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-100 text-stone-600 text-[11px] font-semibold border border-stone-200">
+                                  <span>Zatím nenahrána</span>
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Akce */}
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedPrintNormedEmp(emp)}
+                                  className="px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-[11px] cursor-pointer"
+                                  title="Otevřít normovaný výkaz docházky"
+                                >
+                                  Norm. výkaz
+                                </button>
+                                {empPayslip && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteDoc(empPayslip.id)}
+                                    className="p-1 rounded-lg hover:bg-rose-100 text-rose-600 cursor-pointer"
+                                    title="Odstranit výplatní pásku"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         )}
       </main>
@@ -5264,6 +6266,354 @@ export const AdminV2Page: React.FC<AdminV2PageProps> = ({ onLogout, onGoToKiosk,
               >
                 <Printer className="w-4 h-4" />
                 <span>Vytisknout zmetkový protokol (A4)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: DETAIL DOKUMENTU / SMĚRNICE & SEZNAM PODPISŮ */}
+      {viewingDoc && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between border-b border-stone-200 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-heading font-bold text-lg text-stone-900">{viewingDoc.title}</h3>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      viewingDoc.priority === 'Urgent'
+                        ? 'bg-rose-100 text-rose-800 border-rose-300'
+                        : viewingDoc.priority === 'High'
+                        ? 'bg-amber-100 text-amber-800 border-amber-300'
+                        : 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                    }`}
+                  >
+                    {viewingDoc.priority === 'Urgent' ? '🚨 Kritické' : viewingDoc.priority === 'High' ? '⚠️ Důležité' : 'Normal'}
+                  </span>
+                </div>
+                <div className="text-xs text-stone-500 mt-1 flex items-center gap-2">
+                  <span>Zveřejněno: {new Date(viewingDoc.createdAt).toLocaleDateString('cs-CZ')}</span>
+                  <span>•</span>
+                  <span>Cíl: <strong>{viewingDoc.targetEmployeeName ? `${viewingDoc.targetEmployeeName} (#${viewingDoc.targetEmployeeNumber})` : 'Všichni brigádníci'}</strong></span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingDoc(null)}
+                className="p-1 rounded-lg text-stone-400 hover:text-stone-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div className="p-3 bg-stone-50 rounded-xl border border-stone-200">
+                <span className="font-bold text-stone-700 block uppercase text-[10px] mb-1">Stručné shrnutí:</span>
+                <p className="text-stone-800 leading-relaxed">{viewingDoc.shortText || viewingDoc.content}</p>
+              </div>
+
+              {viewingDoc.fullText && (
+                <div>
+                  <span className="font-bold text-stone-700 block uppercase text-[10px] mb-1">Plné znění dokumentu:</span>
+                  <div className="p-4 bg-stone-100 rounded-xl border border-stone-200 font-mono text-[11px] whitespace-pre-wrap text-stone-800 leading-relaxed max-h-60 overflow-y-auto">
+                    {viewingDoc.fullText}
+                  </div>
+                </div>
+              )}
+
+              {/* Seznam pracovníků, kteří podepsali */}
+              <div>
+                <h5 className="font-heading font-bold text-xs uppercase tracking-wider text-stone-800 mb-2">
+                  Prezenční listina potvrzení z kiosku ({documentConsents.filter((c) => c.documentId === viewingDoc.id).length})
+                </h5>
+                <div className="border border-stone-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-stone-100 text-stone-700 font-bold border-b border-stone-200">
+                      <tr>
+                        <th className="px-3 py-2">Pracovník</th>
+                        <th className="px-3 py-2">Smlouva</th>
+                        <th className="px-3 py-2">Čas potvrzení</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-200">
+                      {(() => {
+                        const signed = documentConsents.filter((c) => c.documentId === viewingDoc.id);
+                        if (signed.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={3} className="px-3 py-6 text-center text-stone-500 italic">
+                                Dokument zatím nebyl nikým elektronicky potvrzen.
+                              </td>
+                            </tr>
+                          );
+                        }
+                        return signed.map((s) => (
+                          <tr key={s.id} className="hover:bg-stone-50">
+                            <td className="px-3 py-1.5 font-bold text-stone-900">{s.employeeName}</td>
+                            <td className="px-3 py-1.5 font-mono text-stone-600">{s.contractType}</td>
+                            <td className="px-3 py-1.5 font-mono text-emerald-800">
+                              {new Date(s.agreedAt).toLocaleString('cs-CZ')}
+                            </td>
+                          </tr>
+                        ));
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-stone-200 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setViewingDoc(null)}
+                className="px-4 py-2 rounded-xl bg-stone-200 hover:bg-stone-300 text-stone-800 font-bold text-xs cursor-pointer"
+              >
+                Zavřít
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: NÁHLED A STAŽENÍ VÝPLATNÍ PÁSKY (PDF) */}
+      {viewingPayslipDoc && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-4xl w-full p-6 shadow-2xl space-y-4 max-h-[92vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-stone-200 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-heading font-bold text-base text-stone-900">{viewingPayslipDoc.title}</h3>
+                  <span className="text-xs text-stone-500 font-mono">
+                    Soubor: {viewingPayslipDoc.fileName || 'vyplatni_paska.pdf'}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setViewingPayslipDoc(null);
+                  setViewingPayslipFile(null);
+                }}
+                className="p-1 rounded-lg text-stone-400 hover:text-stone-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 bg-stone-100 rounded-xl overflow-hidden min-h-[420px] flex items-center justify-center border border-stone-300">
+              {loadingPdf ? (
+                <div className="flex flex-col items-center gap-2 text-stone-500">
+                  <RefreshCw className="w-6 h-6 animate-spin text-emerald-700" />
+                  <span className="text-xs font-semibold">Načítám PDF výplatní pásku...</span>
+                </div>
+              ) : viewingPayslipFile?.fileBase64 ? (
+                <iframe
+                  src={`data:application/pdf;base64,${viewingPayslipFile.fileBase64}`}
+                  title={viewingPayslipFile.fileName}
+                  className="w-full h-[520px] border-none"
+                />
+              ) : (
+                <div className="text-center p-6 text-stone-500 text-xs">
+                  Nepodařilo se načíst obsah PDF souboru.
+                </div>
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-stone-200 flex justify-between items-center">
+              <span className="text-xs text-stone-500">
+                Připraveno ke stažení a tisku
+              </span>
+              <div className="flex items-center gap-2">
+                {viewingPayslipFile?.fileBase64 && (
+                  <a
+                    href={`data:application/pdf;base64,${viewingPayslipFile.fileBase64}`}
+                    download={viewingPayslipFile.fileName || 'vyplatni_paska.pdf'}
+                    className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Stáhnout PDF</span>
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewingPayslipDoc(null);
+                    setViewingPayslipFile(null);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-stone-200 hover:bg-stone-300 text-stone-800 font-bold text-xs cursor-pointer"
+                >
+                  Zavřít
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 6: SOUHRNNÝ MĚSÍČNÍ MZDOVÝ PŘEHLED (A4 TISK PRO VEDENÍ & ÚČETNÍ) */}
+      {showPrintMonthlySummary && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-5xl w-full p-8 shadow-2xl space-y-6 max-h-[92vh] overflow-y-auto print:max-h-none print:overflow-visible print:shadow-none print:p-0 print:border-none">
+            {/* Hlavička tiskopisu */}
+            <div className="flex items-start justify-between border-b-2 border-[#193F34] pb-4">
+              <div className="flex items-center gap-3">
+                <img src={GREENBERG_LOGO} alt="Greenberg" className="w-12 h-12 object-contain" />
+                <div>
+                  <h1 className="font-heading font-extrabold text-xl text-[#193F34] tracking-tight">
+                    MĚSÍČNÍ MZDOVÝ A VÝROBNÍ SOUHRN
+                  </h1>
+                  <p className="text-xs text-stone-600 font-medium">
+                    Greenberg s.r.o. • Finální mzdový list pro mzdovou účetní a vedení provozu
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-stone-500 uppercase font-bold">Období</div>
+                <div className="text-xl font-heading font-black text-emerald-800 font-mono">
+                  {String(reportMonth).padStart(2, '0')} / {reportYear}
+                </div>
+              </div>
+            </div>
+
+            {/* Rekapitulace období */}
+            {(() => {
+              const targetEmployees = employees.filter((emp) => {
+                if (reportEmpFilter !== 'all' && emp.id.toString() !== reportEmpFilter) return false;
+                return true;
+              });
+
+              let sumPieces = 0;
+              let sumEarned = 0;
+              let sumNormH = 0;
+
+              targetEmployees.forEach((emp) => {
+                const normed = computeNormedShiftsForEmployee(emp.id, reportYear, reportMonth);
+                sumPieces += normed.totalPieces;
+                sumEarned += normed.totalEarned;
+                sumNormH += normed.totalNormHours;
+              });
+
+              return (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-4 gap-4 p-4 bg-stone-50 rounded-xl border border-stone-200 text-center text-xs">
+                    <div>
+                      <span className="text-stone-500 block uppercase font-bold text-[10px]">Aktivních pracovníků:</span>
+                      <strong className="text-base text-stone-900 block mt-0.5">{targetEmployees.length}</strong>
+                    </div>
+                    <div>
+                      <span className="text-stone-500 block uppercase font-bold text-[10px]">Vyrobeno a schváleno:</span>
+                      <strong className="text-base font-mono text-emerald-800 block mt-0.5">{sumPieces} ks</strong>
+                    </div>
+                    <div>
+                      <span className="text-stone-500 block uppercase font-bold text-[10px]">Celkem normohodin:</span>
+                      <strong className="text-base font-mono text-sky-900 block mt-0.5">{sumNormH.toFixed(2)} h</strong>
+                    </div>
+                    <div>
+                      <span className="text-stone-500 block uppercase font-bold text-[10px]">Celkové mzdové náklady:</span>
+                      <strong className="text-base font-mono text-[#9B623F] block mt-0.5">
+                        {sumEarned.toLocaleString('cs-CZ')} Kč
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Velká tabulka pracovníků */}
+                  <div className="overflow-x-auto border border-stone-300 rounded-xl">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-[#193F34] text-[#F7F3E9] font-bold text-[11px]">
+                        <tr>
+                          <th className="px-3 py-2">Os. č.</th>
+                          <th className="px-3 py-2">Jméno a příjmení</th>
+                          <th className="px-3 py-2">Smlouva</th>
+                          <th className="px-3 py-2">Bankovní účet</th>
+                          <th className="px-3 py-2 text-right">Schváleno ks</th>
+                          <th className="px-3 py-2 text-right">Normohodiny</th>
+                          <th className="px-3 py-2 text-right">Hrubá mzda Kč</th>
+                          <th className="px-3 py-2 text-center">Výplatní páska</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-200">
+                        {targetEmployees.map((emp) => {
+                          const normed = computeNormedShiftsForEmployee(emp.id, reportYear, reportMonth);
+                          const hasPayslip = payslips.some((p) => p.targetEmployeeId === emp.id);
+
+                          return (
+                            <tr key={emp.id} className="hover:bg-stone-50">
+                              <td className="px-3 py-1.5 font-mono font-bold text-stone-700">
+                                #{emp.employeeNumber || '—'}
+                              </td>
+                              <td className="px-3 py-1.5 font-bold text-stone-900">{emp.fullName}</td>
+                              <td className="px-3 py-1.5 font-mono text-stone-600">{emp.contractType}</td>
+                              <td className="px-3 py-1.5 font-mono text-stone-800">
+                                {emp.bankAccount || '⚠️ Neuveden'}
+                              </td>
+                              <td className="px-3 py-1.5 text-right font-mono font-bold">{normed.totalPieces} ks</td>
+                              <td className="px-3 py-1.5 text-right font-mono font-bold text-sky-900">
+                                {normed.totalNormHours.toFixed(2)} h
+                              </td>
+                              <td className="px-3 py-1.5 text-right font-mono font-extrabold text-emerald-950">
+                                {normed.totalEarned.toLocaleString('cs-CZ')} Kč
+                              </td>
+                              <td className="px-3 py-1.5 text-center font-mono">
+                                {hasPayslip ? (
+                                  <span className="text-emerald-800 font-bold">✅ Nahrána</span>
+                                ) : (
+                                  <span className="text-amber-700 font-bold">⚠️ Chybí</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot className="bg-stone-100 font-bold border-t border-stone-300">
+                        <tr>
+                          <td colSpan={4} className="px-3 py-2 text-right">Celkem:</td>
+                          <td className="px-3 py-2 text-right font-mono text-sm">{sumPieces} ks</td>
+                          <td className="px-3 py-2 text-right font-mono text-sky-950 text-sm">{sumNormH.toFixed(2)} h</td>
+                          <td className="px-3 py-2 text-right font-mono text-emerald-950 text-sm">
+                            {sumEarned.toLocaleString('cs-CZ')} Kč
+                          </td>
+                          <td />
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+
+                  {/* Podpisová pole pro vedení firmy */}
+                  <div className="grid grid-cols-2 gap-16 pt-8 text-xs text-stone-700">
+                    <div className="text-center border-t border-stone-400 pt-2">
+                      <p className="font-bold text-stone-900">Jednatel / Vedení Greenberg s.r.o.</p>
+                      <p className="text-[10px] text-stone-500 mt-0.5">Schválení výrobního a mzdového výkazu</p>
+                    </div>
+                    <div className="text-center border-t border-stone-400 pt-2">
+                      <p className="font-bold text-stone-900">Mzdová účetní</p>
+                      <p className="text-[10px] text-stone-500 mt-0.5">Podpis – zpracování mezd a odeslání plateb</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Tlačítka modálu */}
+            <div className="pt-4 border-t border-stone-200 flex justify-end gap-3 print:hidden">
+              <button
+                type="button"
+                onClick={() => setShowPrintMonthlySummary(false)}
+                className="px-4 py-2 rounded-xl bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold cursor-pointer"
+              >
+                Zavřít
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-2 cursor-pointer shadow-sm"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Vytisknout mzdový přehled (A4)</span>
               </button>
             </div>
           </div>

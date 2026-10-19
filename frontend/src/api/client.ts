@@ -687,8 +687,19 @@ export async function deleteProductionLog(id: number): Promise<void> {
 // ADMIN: FÁZE 3 – DOKUMENTY BOZP & PLÁNOVÁNÍ SMĚN
 // ==========================================
 
-export async function fetchDocuments(): Promise<DocumentItem[]> {
-  const res = await fetch(`${API_BASE}?action=get-documents`, {
+export async function fetchDocuments(params?: {
+  type?: string;
+  employeeId?: number;
+  year?: number;
+  month?: number;
+}): Promise<DocumentItem[]> {
+  const query = new URLSearchParams({ action: 'get-documents' });
+  if (params?.type) query.append('type', params.type);
+  if (params?.employeeId) query.append('employeeId', params.employeeId.toString());
+  if (params?.year) query.append('year', params.year.toString());
+  if (params?.month) query.append('month', params.month.toString());
+
+  const res = await fetch(`${API_BASE}?${query.toString()}`, {
     headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error('Chyba při načítání dokumentů');
@@ -708,6 +719,14 @@ export async function saveDocument(data: {
   shortText?: string;
   fullText?: string;
   isActive: boolean;
+  targetEmployeeId?: number | null;
+  documentType?: string;
+  periodYear?: number | null;
+  periodMonth?: number | null;
+  fileName?: string | null;
+  fileBase64?: string | null;
+  requiresSignature?: boolean;
+  priority?: string;
 }): Promise<void> {
   const res = await fetch(`${API_BASE}?action=save-document`, {
     method: 'POST',
@@ -718,6 +737,37 @@ export async function saveDocument(data: {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || 'Chyba při ukládání dokumentu');
   }
+}
+
+export async function deleteDocument(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}?action=delete-document&id=${id}`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Chyba při mazání dokumentu');
+}
+
+export async function fetchDocumentFile(id: number): Promise<{ fileName: string; fileBase64: string }> {
+  const res = await fetch(`${API_BASE}?action=get-document-file&id=${id}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Chyba při načítání souboru dokumentu');
+  return res.json();
+}
+
+export async function uploadPayslipsBatch(
+  payslips: Array<{ fileName: string; fileBase64: string }>
+): Promise<import('../types').PayslipBatchResponse> {
+  const res = await fetch(`${API_BASE}?action=upload-payslips-batch`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ payslips }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Chyba při nahrávání výplatních pásek');
+  }
+  return res.json();
 }
 
 export async function fetchDocumentConsents(): Promise<DocumentConsentItem[]> {

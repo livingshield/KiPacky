@@ -1,5 +1,6 @@
 ﻿<%@ WebHandler Language="C#" Class="KipackyApiHandler" %>
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
@@ -66,6 +67,12 @@ public class KipackyApiHandler : IHttpHandler
                     break;
                 case "get-document":
                     HandleGetDocumentDetail(context);
+                    break;
+                case "get-employee-payslips":
+                    HandleGetEmployeePayslips(context);
+                    break;
+                case "download-payslip-kiosk":
+                    HandleDownloadPayslipKiosk(context);
                     break;
 
                 // --- AUTH ENDPOINTY ---
@@ -221,6 +228,18 @@ public class KipackyApiHandler : IHttpHandler
                 case "delete-shift":
                     RequireAuth(context);
                     HandleDeleteShift(context);
+                    break;
+                case "delete-document":
+                    RequireAuth(context);
+                    HandleDeleteDocument(context);
+                    break;
+                case "get-document-file":
+                    RequireAuth(context);
+                    HandleGetDocumentFile(context);
+                    break;
+                case "upload-payslips-batch":
+                    RequireAuth(context);
+                    HandleUploadPayslipsBatch(context);
                     break;
 
                 // --- ADMIN: FINÁLNÍ MĚSÍČNÍ REPORT A CSV ---
@@ -594,6 +613,25 @@ END
 -- FÁZE 4: Zmetkové protokoly
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_ProductionLogs]') AND name = 'DefectProtocolDocId')
     ALTER TABLE [Kipacky].[kipa_ProductionLogs] ADD [DefectProtocolDocId] INT NULL;
+
+-- FÁZE 5: Nástěnka a Výplatní pásky
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Documents]') AND name = 'PeriodYear')
+    ALTER TABLE [Kipacky].[kipa_Documents] ADD [PeriodYear] INT NULL;
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Documents]') AND name = 'PeriodMonth')
+    ALTER TABLE [Kipacky].[kipa_Documents] ADD [PeriodMonth] INT NULL;
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Documents]') AND name = 'FileName')
+    ALTER TABLE [Kipacky].[kipa_Documents] ADD [FileName] NVARCHAR(255) NULL;
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Documents]') AND name = 'FileBase64')
+    ALTER TABLE [Kipacky].[kipa_Documents] ADD [FileBase64] NVARCHAR(MAX) NULL;
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Documents]') AND name = 'RequiresSignature')
+    ALTER TABLE [Kipacky].[kipa_Documents] ADD [RequiresSignature] BIT NOT NULL DEFAULT 1;
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Documents]') AND name = 'Priority')
+    ALTER TABLE [Kipacky].[kipa_Documents] ADD [Priority] NVARCHAR(20) NOT NULL DEFAULT 'Normal';
 ";
             using (var cmd = new SqlCommand(sql, conn))
             {
@@ -3420,18 +3458,72 @@ WHERE [Status] = 'Pending'", conn))
 
     private void HandleGetDocuments(HttpContext context)
     {
+        string typeFilter = context.Request.QueryString["type"];
+        string empIdStr = context.Request.QueryString["employeeId"];
+        string yearStr = context.Request.QueryString["year"];
+        string monthStr = context.Request.QueryString["month"];
+
         var list = new List<Dictionary<string, object>>();
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
-            using (var cmd = new SqlCommand("SELECT Id, Title, ISNULL(ShortText, Content) AS ShortText, ISNULL(FullText, '') AS FullText, IsActive, CreatedAt FROM [Kipacky].[kipa_Documents] ORDER BY IsActive DESC, Id ASC", conn))
+            EnsureSchemaMigrations(conn);
+
+            string sql = @"
+SELECT d.Id, d.Title, ISNULL(d.ShortText, d.Content) AS ShortText, ISNULL(d.FullText, '') AS FullText,
+       d.IsActive, d.CreatedAt, d.TargetEmployeeId, e.FullName AS TargetEmployeeName, e.EmployeeNumber AS TargetEmployeeNumber,
+       d.DocumentType, d.PeriodYear, d.PeriodMonth, d.FileName,
+       CASE WHEN d.FileBase64 IS NOT NULL AND LEN(d.FileBase64) > 0 THEN 1 ELSE 0 END AS HasFile,
+       d.RequiresSignature, d.Priority,
+       (SELECT COUNT(DISTINCT c.EmployeeId) FROM [Kipacky].[kipa_DocumentConsents] c WHERE c.DocumentId = d.Id) AS ConsentCount
+FROM [Kipacky].[kipa_Documents] d
+LEFT JOIN [Kipacky].[kipa_Employees] e ON d.TargetEmployeeId = e.Id
+WHERE d.IsActive = 1 ";
+
+            if (!string.IsNullOrEmpty(typeFilter))
             {
+                sql += " AND d.DocumentType = @type ";
+            }
+            if (!string.IsNullOrEmpty(empIdStr))
+            {
+                sql += " AND (d.TargetEmployeeId IS NULL OR d.TargetEmployeeId = @empId) ";
+            }
+            if (!string.IsNullOrEmpty(yearStr))
+            {
+                sql += " AND d.PeriodYear = @year ";
+            }
+            if (!string.IsNullOrEmpty(monthStr))
+            {
+                sql += " AND d.PeriodMonth = @month ";
+            }
+
+            sql += " ORDER BY d.CreatedAt DESC, d.Id DESC";
+
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                if (!string.IsNullOrEmpty(typeFilter)) cmd.Parameters.AddWithValue("@type", typeFilter);
+                if (!string.IsNullOrEmpty(empIdStr)) cmd.Parameters.AddWithValue("@empId", Convert.ToInt32(empIdStr));
+                if (!string.IsNullOrEmpty(yearStr)) cmd.Parameters.AddWithValue("@year", Convert.ToInt32(yearStr));
+                if (!string.IsNullOrEmpty(monthStr)) cmd.Parameters.AddWithValue("@month", Convert.ToInt32(monthStr));
+
                 using (var reader = cmd.ExecuteReader())
                 {
                     while (reader.Read())
                     {
                         string shortTxt = reader.IsDBNull(2) ? "" : reader.GetString(2);
                         string fullTxt = reader.IsDBNull(3) ? "" : reader.GetString(3);
+                        int? targetEmpId = reader.IsDBNull(6) ? (int?)null : reader.GetInt32(6);
+                        string targetEmpName = reader.IsDBNull(7) ? "" : reader.GetString(7);
+                        string targetEmpNum = reader.IsDBNull(8) ? "" : reader.GetString(8);
+                        string docType = reader.IsDBNull(9) ? "General" : reader.GetString(9);
+                        int? pYear = reader.IsDBNull(10) ? (int?)null : reader.GetInt32(10);
+                        int? pMonth = reader.IsDBNull(11) ? (int?)null : reader.GetInt32(11);
+                        string fName = reader.IsDBNull(12) ? "" : reader.GetString(12);
+                        bool hasFile = reader.GetInt32(13) == 1;
+                        bool reqSig = reader.IsDBNull(14) ? true : reader.GetBoolean(14);
+                        string priority = reader.IsDBNull(15) ? "Normal" : reader.GetString(15);
+                        int consentCount = reader.GetInt32(16);
+
                         list.Add(new Dictionary<string, object>
                         {
                             { "id", reader.GetInt32(0) },
@@ -3439,8 +3531,20 @@ WHERE [Status] = 'Pending'", conn))
                             { "content", shortTxt },
                             { "shortText", shortTxt },
                             { "fullText", fullTxt },
+                            { "hasFullText", !string.IsNullOrWhiteSpace(fullTxt) },
                             { "isActive", reader.GetBoolean(4) },
-                            { "createdAt", reader.GetDateTime(5).ToString("s") }
+                            { "createdAt", reader.GetDateTime(5).ToString("s") },
+                            { "targetEmployeeId", targetEmpId },
+                            { "targetEmployeeName", targetEmpName },
+                            { "targetEmployeeNumber", targetEmpNum },
+                            { "documentType", docType },
+                            { "periodYear", pYear },
+                            { "periodMonth", pMonth },
+                            { "fileName", fName },
+                            { "hasFile", hasFile },
+                            { "requiresSignature", reqSig },
+                            { "priority", priority },
+                            { "consentCount", consentCount }
                         });
                     }
                 }
@@ -3454,14 +3558,20 @@ WHERE [Status] = 'Pending'", conn))
         int id = Convert.ToInt32(context.Request.QueryString["id"]);
         if (id <= 0)
         {
-            SendError(context, 400, "Neplatn\u00E9 ID dokumentu.");
+            SendError(context, 400, "Neplatné ID dokumentu.");
             return;
         }
 
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
-            using (var cmd = new SqlCommand("SELECT Id, Title, ISNULL(ShortText, Content) AS ShortText, ISNULL(FullText, '') AS FullText, IsActive, CreatedAt FROM [Kipacky].[kipa_Documents] WHERE Id = @id", conn))
+            using (var cmd = new SqlCommand(@"
+SELECT d.Id, d.Title, ISNULL(d.ShortText, d.Content) AS ShortText, ISNULL(d.FullText, '') AS FullText,
+       d.IsActive, d.CreatedAt, d.TargetEmployeeId, e.FullName AS TargetEmployeeName, e.EmployeeNumber AS TargetEmployeeNumber,
+       d.DocumentType, d.PeriodYear, d.PeriodMonth, d.FileName, d.RequiresSignature, d.Priority
+FROM [Kipacky].[kipa_Documents] d
+LEFT JOIN [Kipacky].[kipa_Employees] e ON d.TargetEmployeeId = e.Id
+WHERE d.Id = @id", conn))
             {
                 cmd.Parameters.AddWithValue("@id", id);
                 using (var reader = cmd.ExecuteReader())
@@ -3470,6 +3580,16 @@ WHERE [Status] = 'Pending'", conn))
                     {
                         string shortTxt = reader.IsDBNull(2) ? "" : reader.GetString(2);
                         string fullTxt = reader.IsDBNull(3) ? "" : reader.GetString(3);
+                        int? targetEmpId = reader.IsDBNull(6) ? (int?)null : reader.GetInt32(6);
+                        string targetEmpName = reader.IsDBNull(7) ? "" : reader.GetString(7);
+                        string targetEmpNum = reader.IsDBNull(8) ? "" : reader.GetString(8);
+                        string docType = reader.IsDBNull(9) ? "General" : reader.GetString(9);
+                        int? pYear = reader.IsDBNull(10) ? (int?)null : reader.GetInt32(10);
+                        int? pMonth = reader.IsDBNull(11) ? (int?)null : reader.GetInt32(11);
+                        string fName = reader.IsDBNull(12) ? "" : reader.GetString(12);
+                        bool reqSig = reader.IsDBNull(13) ? true : reader.GetBoolean(13);
+                        string priority = reader.IsDBNull(14) ? "Normal" : reader.GetString(14);
+
                         SendJson(context, new Dictionary<string, object>
                         {
                             { "id", reader.GetInt32(0) },
@@ -3477,7 +3597,16 @@ WHERE [Status] = 'Pending'", conn))
                             { "shortText", shortTxt },
                             { "fullText", fullTxt },
                             { "isActive", reader.GetBoolean(4) },
-                            { "createdAt", reader.GetDateTime(5).ToString("s") }
+                            { "createdAt", reader.GetDateTime(5).ToString("s") },
+                            { "targetEmployeeId", targetEmpId },
+                            { "targetEmployeeName", targetEmpName },
+                            { "targetEmployeeNumber", targetEmpNum },
+                            { "documentType", docType },
+                            { "periodYear", pYear },
+                            { "periodMonth", pMonth },
+                            { "fileName", fName },
+                            { "requiresSignature", reqSig },
+                            { "priority", priority }
                         });
                         return;
                     }
@@ -3495,41 +3624,442 @@ WHERE [Status] = 'Pending'", conn))
         string shortText = data.ContainsKey("shortText") ? Convert.ToString(data["shortText"]).Trim() : (data.ContainsKey("content") ? Convert.ToString(data["content"]).Trim() : "");
         string fullText = data.ContainsKey("fullText") ? Convert.ToString(data["fullText"]).Trim() : "";
         bool isActive = data.ContainsKey("isActive") ? Convert.ToBoolean(data["isActive"]) : true;
+        int? targetEmpId = data.ContainsKey("targetEmployeeId") && data["targetEmployeeId"] != null && !string.IsNullOrEmpty(data["targetEmployeeId"].ToString()) ? (int?)Convert.ToInt32(data["targetEmployeeId"]) : null;
+        string docType = data.ContainsKey("documentType") ? Convert.ToString(data["documentType"]) : "General";
+        int? pYear = data.ContainsKey("periodYear") && data["periodYear"] != null && !string.IsNullOrEmpty(data["periodYear"].ToString()) ? (int?)Convert.ToInt32(data["periodYear"]) : null;
+        int? pMonth = data.ContainsKey("periodMonth") && data["periodMonth"] != null && !string.IsNullOrEmpty(data["periodMonth"].ToString()) ? (int?)Convert.ToInt32(data["periodMonth"]) : null;
+        string fName = data.ContainsKey("fileName") ? Convert.ToString(data["fileName"]) : null;
+        string fBase64 = data.ContainsKey("fileBase64") ? Convert.ToString(data["fileBase64"]) : null;
+        bool reqSig = data.ContainsKey("requiresSignature") ? Convert.ToBoolean(data["requiresSignature"]) : true;
+        string priority = data.ContainsKey("priority") ? Convert.ToString(data["priority"]) : "Normal";
 
         if (string.IsNullOrWhiteSpace(title))
         {
-            SendError(context, 400, "N\u00E1zev dokumentu je povinn\u00FD.");
+            SendError(context, 400, "Název dokumentu je povinný.");
             return;
         }
 
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
+            EnsureSchemaMigrations(conn);
+
             if (id > 0)
             {
-                using (var cmd = new SqlCommand("UPDATE [Kipacky].[kipa_Documents] SET Title = @t, Content = @s, ShortText = @s, FullText = @f, IsActive = @a WHERE Id = @id", conn))
+                using (var cmd = new SqlCommand(@"
+UPDATE [Kipacky].[kipa_Documents]
+SET Title = @t, Content = @s, ShortText = @s, FullText = @f, IsActive = @a,
+    TargetEmployeeId = @emp, DocumentType = @type, PeriodYear = @py, PeriodMonth = @pm,
+    RequiresSignature = @req, Priority = @pri" +
+(string.IsNullOrEmpty(fBase64) ? "" : ", FileName = @fn, FileBase64 = @fb") + @"
+WHERE Id = @id", conn))
                 {
                     cmd.Parameters.AddWithValue("@t", title);
                     cmd.Parameters.AddWithValue("@s", shortText);
                     cmd.Parameters.AddWithValue("@f", string.IsNullOrEmpty(fullText) ? (object)DBNull.Value : fullText);
                     cmd.Parameters.AddWithValue("@a", isActive);
+                    cmd.Parameters.AddWithValue("@emp", targetEmpId.HasValue ? (object)targetEmpId.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@type", docType);
+                    cmd.Parameters.AddWithValue("@py", pYear.HasValue ? (object)pYear.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@pm", pMonth.HasValue ? (object)pMonth.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@req", reqSig);
+                    cmd.Parameters.AddWithValue("@pri", priority);
+                    if (!string.IsNullOrEmpty(fBase64))
+                    {
+                        cmd.Parameters.AddWithValue("@fn", string.IsNullOrEmpty(fName) ? "dokument.pdf" : fName);
+                        cmd.Parameters.AddWithValue("@fb", fBase64);
+                    }
                     cmd.Parameters.AddWithValue("@id", id);
                     cmd.ExecuteNonQuery();
                 }
             }
             else
             {
-                using (var cmd = new SqlCommand("INSERT INTO [Kipacky].[kipa_Documents] (Title, Content, ShortText, FullText, IsActive) VALUES (@t, @s, @s, @f, @a)", conn))
+                using (var cmd = new SqlCommand(@"
+INSERT INTO [Kipacky].[kipa_Documents]
+(Title, Content, ShortText, FullText, IsActive, TargetEmployeeId, DocumentType, PeriodYear, PeriodMonth, FileName, FileBase64, RequiresSignature, Priority)
+VALUES
+(@t, @s, @s, @f, @a, @emp, @type, @py, @pm, @fn, @fb, @req, @pri)", conn))
                 {
                     cmd.Parameters.AddWithValue("@t", title);
                     cmd.Parameters.AddWithValue("@s", shortText);
                     cmd.Parameters.AddWithValue("@f", string.IsNullOrEmpty(fullText) ? (object)DBNull.Value : fullText);
                     cmd.Parameters.AddWithValue("@a", isActive);
+                    cmd.Parameters.AddWithValue("@emp", targetEmpId.HasValue ? (object)targetEmpId.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@type", docType);
+                    cmd.Parameters.AddWithValue("@py", pYear.HasValue ? (object)pYear.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@pm", pMonth.HasValue ? (object)pMonth.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@fn", string.IsNullOrEmpty(fName) ? (object)DBNull.Value : fName);
+                    cmd.Parameters.AddWithValue("@fb", string.IsNullOrEmpty(fBase64) ? (object)DBNull.Value : fBase64);
+                    cmd.Parameters.AddWithValue("@req", reqSig);
+                    cmd.Parameters.AddWithValue("@pri", priority);
                     cmd.ExecuteNonQuery();
                 }
             }
         }
         SendJson(context, new Dictionary<string, object> { { "success", true } });
+    }
+
+    private void HandleDeleteDocument(HttpContext context)
+    {
+        int id = Convert.ToInt32(context.Request.QueryString["id"]);
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            using (var cmd = new SqlCommand("UPDATE [Kipacky].[kipa_Documents] SET IsActive = 0 WHERE Id = @id", conn))
+            {
+                cmd.Parameters.AddWithValue("@id", id);
+                cmd.ExecuteNonQuery();
+            }
+        }
+        SendJson(context, new Dictionary<string, object> { { "success", true } });
+    }
+
+    private void HandleGetDocumentFile(HttpContext context)
+    {
+        int id = Convert.ToInt32(context.Request.QueryString["id"]);
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            using (var cmd = new SqlCommand("SELECT FileName, FileBase64 FROM [Kipacky].[kipa_Documents] WHERE Id = @id", conn))
+            {
+                cmd.Parameters.AddWithValue("@id", id);
+                using (var r = cmd.ExecuteReader())
+                {
+                    if (r.Read())
+                    {
+                        string fName = r.IsDBNull(0) ? "dokument.pdf" : r.GetString(0);
+                        string b64 = r.IsDBNull(1) ? "" : r.GetString(1);
+                        SendJson(context, new Dictionary<string, object>
+                        {
+                            { "fileName", fName },
+                            { "fileBase64", b64 }
+                        });
+                        return;
+                    }
+                }
+            }
+        }
+        SendError(context, 404, "Soubor nebyl nalezen.");
+    }
+
+    private void HandleUploadPayslipsBatch(HttpContext context)
+    {
+        var data = ReadJsonBody(context);
+        var list = data.ContainsKey("payslips") ? data["payslips"] as ArrayList : null;
+        if (list == null || list.Count == 0)
+        {
+            SendError(context, 400, "Nebyly předány žádné soubory výplatních pásek.");
+            return;
+        }
+
+        var results = new List<Dictionary<string, object>>();
+        int successCount = 0;
+        int failCount = 0;
+
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            EnsureSchemaMigrations(conn);
+
+            var empMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var empNameMap = new Dictionary<int, string>();
+            using (var cmdEmps = new SqlCommand("SELECT Id, EmployeeNumber, FullName FROM [Kipacky].[kipa_Employees] WHERE EmployeeNumber IS NOT NULL AND LEN(EmployeeNumber) > 0", conn))
+            {
+                using (var r = cmdEmps.ExecuteReader())
+                {
+                    while (r.Read())
+                    {
+                        int empId = r.GetInt32(0);
+                        string num = r.GetString(1).Trim();
+                        string name = r.GetString(2);
+                        if (!empMap.ContainsKey(num))
+                        {
+                            empMap[num] = empId;
+                            empNameMap[empId] = name;
+                        }
+                    }
+                }
+            }
+
+            foreach (var itemObj in list)
+            {
+                var item = itemObj as Dictionary<string, object>;
+                if (item == null) continue;
+
+                string fileName = item.ContainsKey("fileName") ? Convert.ToString(item["fileName"]).Trim() : "";
+                string fileBase64 = item.ContainsKey("fileBase64") ? Convert.ToString(item["fileBase64"]).Trim() : "";
+
+                if (string.IsNullOrEmpty(fileName))
+                {
+                    failCount++;
+                    results.Add(new Dictionary<string, object>
+                    {
+                        { "fileName", fileName },
+                        { "success", false },
+                        { "error", "Chybí název souboru." }
+                    });
+                    continue;
+                }
+
+                string nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
+                string[] parts = nameWithoutExt.Split('_');
+                if (parts.Length < 3)
+                {
+                    failCount++;
+                    results.Add(new Dictionary<string, object>
+                    {
+                        { "fileName", fileName },
+                        { "success", false },
+                        { "error", "Neplatný formát názvu. Očekáván tvar: 'osobnicislo_RR_MM.pdf'." }
+                    });
+                    continue;
+                }
+
+                string empNum = parts[0].Trim();
+                int parsedYear = 0;
+                int parsedMonth = 0;
+
+                if (!int.TryParse(parts[1], out parsedYear) || !int.TryParse(parts[2], out parsedMonth))
+                {
+                    failCount++;
+                    results.Add(new Dictionary<string, object>
+                    {
+                        { "fileName", fileName },
+                        { "success", false },
+                        { "error", "Číslo roku nebo měsíce v názvu není platné číslo." }
+                    });
+                    continue;
+                }
+
+                if (parsedYear < 100)
+                {
+                    parsedYear = 2000 + parsedYear;
+                }
+
+                if (parsedMonth < 1 || parsedMonth > 12)
+                {
+                    failCount++;
+                    results.Add(new Dictionary<string, object>
+                    {
+                        { "fileName", fileName },
+                        { "success", false },
+                        { "error", "Měsíc musí být v rozmezí 1 až 12." }
+                    });
+                    continue;
+                }
+
+                if (!empMap.ContainsKey(empNum))
+                {
+                    failCount++;
+                    results.Add(new Dictionary<string, object>
+                    {
+                        { "fileName", fileName },
+                        { "success", false },
+                        { "employeeNumber", empNum },
+                        { "year", parsedYear },
+                        { "month", parsedMonth },
+                        { "error", "Zaměstnanec s osobním číslem #" + empNum + " nebyl v systému nalezen." }
+                    });
+                    continue;
+                }
+
+                int targetEmpId = empMap[empNum];
+                string targetEmpName = empNameMap[targetEmpId];
+
+                string docTitle = "Výplatní páska " + parsedMonth.ToString("D2") + "/" + parsedYear + " – " + targetEmpName;
+                string docShort = "Výplatní páska za období " + parsedMonth.ToString("D2") + "/" + parsedYear + ".";
+                string docFull = "Mzdový list a výplatní páska pro pracovníka " + targetEmpName + " (os. č. " + empNum + ") za období " + parsedMonth.ToString("D2") + "/" + parsedYear + ".";
+
+                int existingDocId = 0;
+                using (var cmdCheck = new SqlCommand("SELECT TOP 1 Id FROM [Kipacky].[kipa_Documents] WHERE DocumentType = 'Payslip' AND TargetEmployeeId = @empId AND PeriodYear = @y AND PeriodMonth = @m", conn))
+                {
+                    cmdCheck.Parameters.AddWithValue("@empId", targetEmpId);
+                    cmdCheck.Parameters.AddWithValue("@y", parsedYear);
+                    cmdCheck.Parameters.AddWithValue("@m", parsedMonth);
+                    object obj = cmdCheck.ExecuteScalar();
+                    if (obj != null && obj != DBNull.Value)
+                    {
+                        existingDocId = Convert.ToInt32(obj);
+                    }
+                }
+
+                if (existingDocId > 0)
+                {
+                    using (var cmdUpd = new SqlCommand(@"
+UPDATE [Kipacky].[kipa_Documents]
+SET Title = @t,
+    ShortText = @s,
+    Content = @s,
+    FullText = @f,
+    FileName = @fn,
+    FileBase64 = @fb,
+    IsActive = 1,
+    CreatedAt = GETDATE()
+WHERE Id = @id", conn))
+                    {
+                        cmdUpd.Parameters.AddWithValue("@t", docTitle);
+                        cmdUpd.Parameters.AddWithValue("@s", docShort);
+                        cmdUpd.Parameters.AddWithValue("@f", docFull);
+                        cmdUpd.Parameters.AddWithValue("@fn", fileName);
+                        cmdUpd.Parameters.AddWithValue("@fb", fileBase64);
+                        cmdUpd.Parameters.AddWithValue("@id", existingDocId);
+                        cmdUpd.ExecuteNonQuery();
+                    }
+                }
+                else
+                {
+                    using (var cmdIns = new SqlCommand(@"
+INSERT INTO [Kipacky].[kipa_Documents]
+(Title, Content, ShortText, FullText, IsActive, TargetEmployeeId, DocumentType, PeriodYear, PeriodMonth, FileName, FileBase64, RequiresSignature, Priority)
+VALUES
+(@t, @s, @s, @f, 1, @empId, 'Payslip', @y, @m, @fn, @fb, 0, 'Normal')", conn))
+                    {
+                        cmdIns.Parameters.AddWithValue("@t", docTitle);
+                        cmdIns.Parameters.AddWithValue("@s", docShort);
+                        cmdIns.Parameters.AddWithValue("@f", docFull);
+                        cmdIns.Parameters.AddWithValue("@empId", targetEmpId);
+                        cmdIns.Parameters.AddWithValue("@y", parsedYear);
+                        cmdIns.Parameters.AddWithValue("@m", parsedMonth);
+                        cmdIns.Parameters.AddWithValue("@fn", fileName);
+                        cmdIns.Parameters.AddWithValue("@fb", fileBase64);
+                        cmdIns.ExecuteNonQuery();
+                    }
+                }
+
+                successCount++;
+                results.Add(new Dictionary<string, object>
+                {
+                    { "fileName", fileName },
+                    { "success", true },
+                    { "employeeId", targetEmpId },
+                    { "employeeName", targetEmpName },
+                    { "employeeNumber", empNum },
+                    { "year", parsedYear },
+                    { "month", parsedMonth }
+                });
+            }
+        }
+
+        SendJson(context, new Dictionary<string, object>
+        {
+            { "success", true },
+            { "totalCount", list.Count },
+            { "successCount", successCount },
+            { "failCount", failCount },
+            { "results", results }
+        });
+    }
+
+    private void HandleGetEmployeePayslips(HttpContext context)
+    {
+        string pin = context.Request.QueryString["pinCode"] ?? "";
+        int empId = 0;
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            EnsureSchemaMigrations(conn);
+            using (var cmdP = new SqlCommand("SELECT Id FROM [Kipacky].[kipa_Employees] WHERE PinCode = @p AND Status = 'Active'", conn))
+            {
+                cmdP.Parameters.AddWithValue("@p", pin);
+                object obj = cmdP.ExecuteScalar();
+                if (obj != null && obj != DBNull.Value) empId = Convert.ToInt32(obj);
+            }
+
+            if (empId <= 0)
+            {
+                SendError(context, 401, "Neplatný PIN.");
+                return;
+            }
+
+            var list = new List<Dictionary<string, object>>();
+            using (var cmd = new SqlCommand(@"
+SELECT d.Id, d.Title, d.PeriodYear, d.PeriodMonth, d.FileName, d.CreatedAt,
+       (SELECT MAX(c.AgreedAt) FROM [Kipacky].[kipa_DocumentConsents] c WHERE c.DocumentId = d.Id AND c.EmployeeId = @empId) AS ViewedAt
+FROM [Kipacky].[kipa_Documents] d
+WHERE d.IsActive = 1 AND d.DocumentType = 'Payslip' AND d.TargetEmployeeId = @empId
+ORDER BY d.PeriodYear DESC, d.PeriodMonth DESC", conn))
+            {
+                cmd.Parameters.AddWithValue("@empId", empId);
+                using (var r = cmd.ExecuteReader())
+                {
+                    while (r.Read())
+                    {
+                        DateTime? viewed = r.IsDBNull(6) ? (DateTime?)null : r.GetDateTime(6);
+                        list.Add(new Dictionary<string, object>
+                        {
+                            { "id", r.GetInt32(0) },
+                            { "title", r.GetString(1) },
+                            { "year", r.IsDBNull(2) ? 0 : r.GetInt32(2) },
+                            { "month", r.IsDBNull(3) ? 0 : r.GetInt32(3) },
+                            { "fileName", r.IsDBNull(4) ? "" : r.GetString(4) },
+                            { "createdAt", r.GetDateTime(5).ToString("s") },
+                            { "viewedAt", viewed.HasValue ? viewed.Value.ToString("s") : null }
+                        });
+                    }
+                }
+            }
+            SendJson(context, list);
+        }
+    }
+
+    private void HandleDownloadPayslipKiosk(HttpContext context)
+    {
+        string pin = context.Request.QueryString["pinCode"] ?? "";
+        int docId = Convert.ToInt32(context.Request.QueryString["id"]);
+        int empId = 0;
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            EnsureSchemaMigrations(conn);
+            using (var cmdP = new SqlCommand("SELECT Id FROM [Kipacky].[kipa_Employees] WHERE PinCode = @p AND Status = 'Active'", conn))
+            {
+                cmdP.Parameters.AddWithValue("@p", pin);
+                object obj = cmdP.ExecuteScalar();
+                if (obj != null && obj != DBNull.Value) empId = Convert.ToInt32(obj);
+            }
+
+            if (empId <= 0)
+            {
+                SendError(context, 401, "Neplatný PIN.");
+                return;
+            }
+
+            string fName = "";
+            string b64 = "";
+            using (var cmd = new SqlCommand("SELECT FileName, FileBase64 FROM [Kipacky].[kipa_Documents] WHERE Id = @id AND TargetEmployeeId = @empId AND IsActive = 1", conn))
+            {
+                cmd.Parameters.AddWithValue("@id", docId);
+                cmd.Parameters.AddWithValue("@empId", empId);
+                using (var r = cmd.ExecuteReader())
+                {
+                    if (r.Read())
+                    {
+                        fName = r.IsDBNull(0) ? "vyplatni_paska.pdf" : r.GetString(0);
+                        b64 = r.IsDBNull(1) ? "" : r.GetString(1);
+                    }
+                }
+            }
+
+            if (string.IsNullOrEmpty(b64))
+            {
+                SendError(context, 404, "Výplatní páska nebyla nalezena.");
+                return;
+            }
+
+            using (var cmdCons = new SqlCommand("INSERT INTO [Kipacky].[kipa_DocumentConsents] (EmployeeId, DocumentId, AgreedAt) VALUES (@emp, @doc, GETDATE())", conn))
+            {
+                cmdCons.Parameters.AddWithValue("@emp", empId);
+                cmdCons.Parameters.AddWithValue("@doc", docId);
+                cmdCons.ExecuteNonQuery();
+            }
+
+            SendJson(context, new Dictionary<string, object>
+            {
+                { "fileName", fName },
+                { "fileBase64", b64 }
+            });
+        }
     }
 
     private void HandleGetConsents(HttpContext context)
