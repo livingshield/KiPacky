@@ -160,6 +160,8 @@ export interface AttendanceLogItem {
   id: number;
   employeeId: number;
   employeeName: string;
+  employeeNumber?: string;
+  photoUrl?: string;
   contractType: string;
   timestamp: string;
   eventType: 'ClockIn' | 'ClockOut' | 'BreakStart' | 'BreakEnd';
@@ -176,6 +178,8 @@ export interface ProductionLogItem {
   id: number;
   employeeId: number;
   employeeName: string;
+  employeeNumber?: string;
+  photoUrl?: string;
   contractType: string;
   orderId: number;
   orderName: string;
@@ -192,6 +196,8 @@ export interface ProductionLogItem {
   note: string;
   earnedCzk: number;
   productiveHours: number;
+  normHours?: number;
+  defectProtocolDocId?: number | null;
 }
 
 export interface DocumentItem {

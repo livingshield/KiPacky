@@ -38,9 +38,27 @@ import {
   FolderOpen,
   Send,
   Boxes,
-  FileCheck
+  FileCheck,
+  CheckCheck,
+  AlertCircle,
+  FileWarning,
+  Calculator,
+  Info,
+  CalendarRange,
+  Clock3,
+  X
 } from 'lucide-react';
-import { Employee, OrderItem, OperationItem, OrderAssignmentItem, OrderDetailResult, OrderMaterialItem, MaterialDispatchItem } from '../types';
+import {
+  Employee,
+  OrderItem,
+  OperationItem,
+  OrderAssignmentItem,
+  OrderDetailResult,
+  OrderMaterialItem,
+  MaterialDispatchItem,
+  AttendanceLogItem,
+  ProductionLogItem
+} from '../types';
 import {
   fetchEmployees,
   createEmployee,
@@ -58,7 +76,15 @@ import {
   deleteOrderMaterial,
   fetchMaterialDispatches,
   saveMaterialDispatch,
-  deleteMaterialDispatch
+  deleteMaterialDispatch,
+  fetchAttendanceLogs,
+  createManualLog,
+  updateAttendanceLog,
+  deleteAttendanceLog,
+  fetchProductionLogs,
+  approveProduction,
+  approveAllProduction,
+  deleteProductionLog
 } from '../api/client';
 import { GREENBERG_LOGO } from '../assets/logoBase64';
 import { APP_VERSION } from '../version';
@@ -179,6 +205,39 @@ export const AdminV2Page: React.FC<AdminV2PageProps> = ({ onLogout, onGoToKiosk,
   const [selectedPrintReceiptOrder, setSelectedPrintReceiptOrder] = useState<OrderItem | null>(null);
   const [selectedPrintDispatch, setSelectedPrintDispatch] = useState<MaterialDispatchItem | null>(null);
 
+  // FÁZE 4: DOCHÁZKA (Reálná vs. Normovaná)
+  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLogItem[]>([]);
+  const [loadingAttendance, setLoadingAttendance] = useState(false);
+  const [attendanceSubTab, setAttendanceSubTab] = useState<'real' | 'normed'>('real');
+  const [attendanceMonth, setAttendanceMonth] = useState<number>(new Date().getMonth() + 1);
+  const [attendanceYear, setAttendanceYear] = useState<number>(new Date().getFullYear());
+  const [attendanceEmpFilter, setAttendanceEmpFilter] = useState<string>('all');
+  const [attendanceEventFilter, setAttendanceEventFilter] = useState<string>('all');
+
+  // Ruční záznam / korekce docházky
+  const [showManualLogModal, setShowManualLogModal] = useState(false);
+  const [editingLogItem, setEditingLogItem] = useState<AttendanceLogItem | null>(null);
+  const [manualLogEmpId, setManualLogEmpId] = useState<string>('');
+  const [manualLogDate, setManualLogDate] = useState<string>(new Date().toISOString().substring(0, 10));
+  const [manualLogTime, setManualLogTime] = useState<string>('08:00');
+  const [manualLogEventType, setManualLogEventType] = useState<'ClockIn' | 'ClockOut' | 'BreakStart' | 'BreakEnd'>('ClockIn');
+  const [manualLogNote, setManualLogNote] = useState<string>('');
+
+  // Tisk normované docházky A4
+  const [selectedPrintNormedEmp, setSelectedPrintNormedEmp] = useState<Employee | null>(null);
+
+  // FÁZE 4: PRODUKCE & SCHVALOVÁNÍ KUSŮ
+  const [productionLogs, setProductionLogs] = useState<ProductionLogItem[]>([]);
+  const [loadingProduction, setLoadingProduction] = useState(false);
+  const [prodStatusFilter, setProdStatusFilter] = useState<'all' | 'Pending' | 'Approved'>('all');
+  const [prodOrderFilter, setProdOrderFilter] = useState<string>('all');
+  const [prodEmpFilter, setProdEmpFilter] = useState<string>('all');
+  const [approvingProdId, setApprovingProdId] = useState<number | null>(null);
+  const [prodInlineEdits, setProdInlineEdits] = useState<Record<number, { val: number; def: number; note: string }>>({});
+
+  // Tisk Zmetkového protokolu A4
+  const [selectedDefectLog, setSelectedDefectLog] = useState<ProductionLogItem | null>(null);
+
   // Notifikace / zpětná vazba
   const [statusMsg, setStatusMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
@@ -193,18 +252,46 @@ export const AdminV2Page: React.FC<AdminV2PageProps> = ({ onLogout, onGoToKiosk,
     }, 4500);
   };
 
+  const loadAttendance = async () => {
+    setLoadingAttendance(true);
+    try {
+      const data = await fetchAttendanceLogs();
+      setAttendanceLogs(data);
+    } catch {
+      showNotification('Nepodařilo se načíst docházku', 'error');
+    } finally {
+      setLoadingAttendance(false);
+    }
+  };
+
+  const loadProduction = async () => {
+    setLoadingProduction(true);
+    try {
+      const data = await fetchProductionLogs();
+      setProductionLogs(data);
+    } catch {
+      showNotification('Nepodařilo se načíst produkci', 'error');
+    } finally {
+      setLoadingProduction(false);
+    }
+  };
+
   const loadData = async () => {
     setLoadingEmployees(true);
     setLoadingOrders(true);
     setLoadingMaterials(true);
+    setLoadingAttendance(true);
+    setLoadingProduction(true);
     try {
-      const [empData, ordData, opData, assignData, matData, dispData] = await Promise.all([
+      const [empData, ordData, opData, assignData, matData, dispData, attData, prodData] = await Promise.all([
         fetchEmployees().catch(() => []),
         fetchOrders().catch(() => []),
         fetchOperations().catch(() => []),
         fetchOrderAssignments().catch(() => []),
         fetchOrderMaterials().catch(() => []),
-        fetchMaterialDispatches().catch(() => [])
+        fetchMaterialDispatches().catch(() => []),
+        fetchAttendanceLogs().catch(() => []),
+        fetchProductionLogs().catch(() => [])
       ]);
       setEmployees(empData);
       setOrders(ordData);
@@ -212,13 +299,243 @@ export const AdminV2Page: React.FC<AdminV2PageProps> = ({ onLogout, onGoToKiosk,
       setOrderAssignments(assignData);
       setMaterials(matData);
       setDispatches(dispData);
+      setAttendanceLogs(attData);
+      setProductionLogs(prodData);
     } catch {
       showNotification('Nepodařilo se načíst data ze serveru', 'error');
     } finally {
       setLoadingEmployees(false);
       setLoadingOrders(false);
       setLoadingMaterials(false);
+      setLoadingAttendance(false);
+      setLoadingProduction(false);
     }
+  };
+
+  // Handlery pro docházku
+  const handleOpenNewManualLog = () => {
+    setEditingLogItem(null);
+    setManualLogEmpId(employees.length > 0 ? employees[0].id.toString() : '');
+    setManualLogDate(new Date().toISOString().substring(0, 10));
+    setManualLogTime('08:00');
+    setManualLogEventType('ClockIn');
+    setManualLogNote('');
+    setShowManualLogModal(true);
+  };
+
+  const handleOpenEditLog = (item: AttendanceLogItem) => {
+    setEditingLogItem(item);
+    setManualLogEmpId(item.employeeId.toString());
+    const dt = new Date(item.timestamp);
+    const dateStr = dt.toISOString().substring(0, 10);
+    const hours = String(dt.getHours()).padStart(2, '0');
+    const mins = String(dt.getMinutes()).padStart(2, '0');
+    setManualLogDate(dateStr);
+    setManualLogTime(`${hours}:${mins}`);
+    setManualLogEventType(item.eventType);
+    setManualLogNote(item.note || '');
+    setShowManualLogModal(true);
+  };
+
+  const handleSaveManualLog = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualLogEmpId) {
+      showNotification('Vyberte prosím zaměstnance', 'error');
+      return;
+    }
+    const fullTimestamp = `${manualLogDate}T${manualLogTime}:00`;
+    try {
+      if (editingLogItem) {
+        await updateAttendanceLog(editingLogItem.id, {
+          timestamp: fullTimestamp,
+          eventType: manualLogEventType,
+          note: manualLogNote
+        });
+        showNotification('Záznam docházky byl upraven (s auditem).');
+      } else {
+        await createManualLog({
+          employeeId: parseInt(manualLogEmpId, 10),
+          timestamp: fullTimestamp,
+          eventType: manualLogEventType,
+          note: manualLogNote
+        });
+        showNotification('Nový záznam docházky byl vytvořen.');
+      }
+      setShowManualLogModal(false);
+      setEditingLogItem(null);
+      setManualLogNote('');
+      loadAttendance();
+    } catch (err: any) {
+      showNotification(err.message || 'Chyba při ukládání docházky', 'error');
+    }
+  };
+
+  const handleDeleteLog = async (id: number) => {
+    if (!window.confirm('Opravdu chcete smazat tento záznam docházky?')) return;
+    try {
+      await deleteAttendanceLog(id);
+      showNotification('Záznam docházky byl smazán.');
+      loadAttendance();
+    } catch (err: any) {
+      showNotification(err.message || 'Chyba při mazání záznamu', 'error');
+    }
+  };
+
+  // Handlery pro produkci
+  const handleApproveProdItem = async (log: ProductionLogItem) => {
+    const edit = prodInlineEdits[log.id] || {
+      val: log.status === 'Approved' ? log.validatedPieces : log.submittedPieces,
+      def: log.defectPieces || 0,
+      note: log.note || ''
+    };
+    setApprovingProdId(log.id);
+    try {
+      await approveProduction({
+        id: log.id,
+        validatedPieces: Number(edit.val),
+        defectPieces: Number(edit.def),
+        note: edit.note
+      });
+      showNotification(`Záznam #${log.id} byl úspěšně schválen.`);
+      loadProduction();
+    } catch (err: any) {
+      showNotification(err.message || 'Chyba při schvalování produkce', 'error');
+    } finally {
+      setApprovingProdId(null);
+    }
+  };
+
+  const handleApproveAllProd = async () => {
+    const pendingCount = productionLogs.filter(p => p.status === 'Pending').length;
+    if (pendingCount === 0) {
+      showNotification('Nejsou žádné čekající záznamy ke schválení.');
+      return;
+    }
+    if (!window.confirm(`Opravdu chcete hromadně schválit všech ${pendingCount} čekajících záznamů bez vad?`)) {
+      return;
+    }
+    try {
+      const res = await approveAllProduction();
+      showNotification(`Hromadně schváleno: ${res.approvedCount} záznamů.`);
+      loadProduction();
+    } catch (err: any) {
+      showNotification(err.message || 'Chyba při hromadném schvalování', 'error');
+    }
+  };
+
+  const handleDeleteProdItem = async (id: number) => {
+    if (!window.confirm('Opravdu chcete smazat tento výkaz produkce?')) return;
+    try {
+      await deleteProductionLog(id);
+      showNotification('Výkaz produkce byl smazán.');
+      loadProduction();
+    } catch (err: any) {
+      showNotification(err.message || 'Chyba při mazání záznamu', 'error');
+    }
+  };
+
+  // Pomocné funkce pro Normovanou docházku pro účetní (135 Kč / h norma)
+  const computeNormedShiftsForEmployee = (empId: number, targetYear: number, targetMonth: number) => {
+    const approvedMonthLogs = productionLogs.filter(p => {
+      if (p.employeeId !== empId || p.status !== 'Approved') return false;
+      const d = new Date(p.date);
+      return d.getFullYear() === targetYear && (d.getMonth() + 1) === targetMonth;
+    });
+
+    const totalPieces = approvedMonthLogs.reduce((acc, p) => acc + (p.validatedPieces || 0), 0);
+    const totalDefects = approvedMonthLogs.reduce((acc, p) => acc + (p.defectPieces || 0), 0);
+    const totalEarned = approvedMonthLogs.reduce((acc, p) => acc + (p.earnedCzk || 0), 0);
+    const totalNormHours = totalEarned > 0 ? (totalEarned / 135.0) : 0;
+
+    const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
+    const weekdays: Date[] = [];
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dt = new Date(targetYear, targetMonth - 1, day);
+      const dow = dt.getDay();
+      if (dow >= 1 && dow <= 5) {
+        weekdays.push(dt);
+      }
+    }
+
+    let remainingHours = totalNormHours;
+    const shifts: Array<{
+      date: Date;
+      dateStr: string;
+      dayName: string;
+      hours: number;
+      startTime: string;
+      lunchStart: string | null;
+      lunchEnd: string | null;
+      endTime: string;
+      presenceHours: number;
+    }> = [];
+
+    const dayNames = ['Neděle', 'Pondělí', 'Úterý', 'Středa', 'Čtvrtek', 'Pátek', 'Sobota'];
+
+    for (const wd of weekdays) {
+      if (remainingHours <= 0.001) break;
+      const dayHours = Math.min(8.0, remainingHours);
+      remainingHours -= dayHours;
+
+      let startTime = '08:00';
+      let lunchStart: string | null = null;
+      let lunchEnd: string | null = null;
+      let endTime = '';
+      let presenceHours = dayHours;
+
+      if (dayHours <= 4.0) {
+        const endMins = 8 * 60 + Math.round(dayHours * 60);
+        const endH = Math.floor(endMins / 60);
+        const endM = endMins % 60;
+        endTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+      } else {
+        lunchStart = '12:00';
+        lunchEnd = '12:30';
+        const afterLunchMins = Math.round((dayHours - 4.0) * 60);
+        const endMins = (12 * 60 + 30) + afterLunchMins;
+        const endH = Math.floor(endMins / 60);
+        const endM = endMins % 60;
+        endTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+        presenceHours = dayHours + 0.5;
+      }
+
+      shifts.push({
+        date: wd,
+        dateStr: wd.toLocaleDateString('cs-CZ'),
+        dayName: dayNames[wd.getDay()],
+        hours: Math.round(dayHours * 100) / 100,
+        startTime,
+        lunchStart,
+        lunchEnd,
+        endTime,
+        presenceHours: Math.round(presenceHours * 100) / 100,
+      });
+    }
+
+    const overflowHours = remainingHours > 0.001 ? Math.round(remainingHours * 100) / 100 : 0;
+
+    return {
+      approvedMonthLogs,
+      totalPieces,
+      totalDefects,
+      totalEarned: Math.round(totalEarned * 100) / 100,
+      totalNormHours: Math.round(totalNormHours * 100) / 100,
+      shifts,
+      overflowHours,
+      workingDaysCount: weekdays.length,
+      maxStandardHours: weekdays.length * 8
+    };
+  };
+
+  const getAnnualHoursForEmployee = (empId: number, targetYear: number) => {
+    const yearLogs = productionLogs.filter(p => {
+      if (p.employeeId !== empId || p.status !== 'Approved') return false;
+      const d = new Date(p.date);
+      return d.getFullYear() === targetYear;
+    });
+    const yearEarned = yearLogs.reduce((acc, p) => acc + (p.earnedCzk || 0), 0);
+    const yearNormHours = yearEarned > 0 ? (yearEarned / 135.0) : 0;
+    return Math.round(yearNormHours * 10) / 10;
   };
 
   // Výpočet zbývajících dní zakázky
@@ -3387,23 +3704,895 @@ export const AdminV2Page: React.FC<AdminV2PageProps> = ({ onLogout, onGoToKiosk,
           </div>
         )}
 
+        {/* FÁZE 4: ZÁLOŽKA DOCHÁZKA (Reálná vs. Normovaná) */}
         {activeTab === 'attendance' && (
-          <div className="bg-white/95 border border-stone-300 rounded-2xl p-8 text-center space-y-3">
-            <Clock className="w-12 h-12 text-sky-600 mx-auto" />
-            <h3 className="font-heading font-bold text-xl text-[#193F34]">Fáze 4: Reálná vs. Normovaná docházka</h3>
-            <p className="text-sm text-stone-600 max-w-lg mx-auto">
-              Automatický propočet normohodin (kusy × sazba / 135 Kč), rozpočítání do dnů pro domácí práci a 30min pauzy po 4 hodinách práce.
-            </p>
+          <div className="space-y-6">
+            {/* Horní lišta: Přepínač pod-pohledů + Filtry období a pracovníka */}
+            <div className="bg-white/95 border border-stone-200 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              {/* Přepínač Reálná vs Normovaná docházka */}
+              <div className="flex bg-stone-100 p-1 rounded-xl self-start">
+                <button
+                  type="button"
+                  onClick={() => setAttendanceSubTab('real')}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                    attendanceSubTab === 'real'
+                      ? 'bg-sky-700 text-white shadow-sm'
+                      : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Reálná docházka (Kiosk)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAttendanceSubTab('normed')}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                    attendanceSubTab === 'normed'
+                      ? 'bg-emerald-700 text-white shadow-sm'
+                      : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  <Calculator className="w-3.5 h-3.5" />
+                  <span>Normovaná docházka (Pro účetní)</span>
+                </button>
+              </div>
+
+              {/* Filtry */}
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Měsíc a Rok */}
+                <div className="flex items-center gap-1.5 bg-stone-50 px-3 py-1.5 rounded-xl border border-stone-200">
+                  <CalendarRange className="w-3.5 h-3.5 text-stone-500" />
+                  <select
+                    value={attendanceMonth}
+                    onChange={(e) => setAttendanceMonth(parseInt(e.target.value, 10))}
+                    className="bg-transparent text-xs font-bold text-stone-800 focus:outline-none cursor-pointer"
+                  >
+                    {[
+                      { m: 1, n: 'Leden' },
+                      { m: 2, n: 'Únor' },
+                      { m: 3, n: 'Březen' },
+                      { m: 4, n: 'Duben' },
+                      { m: 5, n: 'Květen' },
+                      { m: 6, n: 'Červen' },
+                      { m: 7, n: 'Červenec' },
+                      { m: 8, n: 'Srpen' },
+                      { m: 9, n: 'Září' },
+                      { m: 10, n: 'Říjen' },
+                      { m: 11, n: 'Listopad' },
+                      { m: 12, n: 'Prosinec' }
+                    ].map((item) => (
+                      <option key={item.m} value={item.m}>{item.n}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={attendanceYear}
+                    onChange={(e) => setAttendanceYear(parseInt(e.target.value, 10))}
+                    className="bg-transparent text-xs font-bold text-stone-800 focus:outline-none cursor-pointer border-l border-stone-200 pl-1.5 ml-1"
+                  >
+                    <option value={2025}>2025</option>
+                    <option value={2026}>2026</option>
+                    <option value={2027}>2027</option>
+                  </select>
+                </div>
+
+                {/* Pracovník filtr */}
+                <div className="flex items-center gap-1.5 bg-stone-50 px-3 py-1.5 rounded-xl border border-stone-200">
+                  <Users className="w-3.5 h-3.5 text-stone-500" />
+                  <select
+                    value={attendanceEmpFilter}
+                    onChange={(e) => setAttendanceEmpFilter(e.target.value)}
+                    className="bg-transparent text-xs font-semibold text-stone-800 focus:outline-none cursor-pointer max-w-[200px]"
+                  >
+                    <option value="all">Všichni pracovníci ({employees.length})</option>
+                    {employees.map((emp) => (
+                      <option key={emp.id} value={emp.id.toString()}>
+                        {emp.fullName} {emp.employeeNumber ? `(#${emp.employeeNumber})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Extra filtry pro reálnou docházku */}
+                {attendanceSubTab === 'real' && (
+                  <>
+                    <select
+                      value={attendanceEventFilter}
+                      onChange={(e) => setAttendanceEventFilter(e.target.value)}
+                      className="bg-stone-50 px-3 py-1.5 rounded-xl border border-stone-200 text-xs font-semibold text-stone-800 focus:outline-none cursor-pointer"
+                    >
+                      <option value="all">Všechny typy událostí</option>
+                      <option value="ClockIn">Pouze příchody</option>
+                      <option value="ClockOut">Pouze odchody</option>
+                      <option value="BreakStart">Začátky pauzy</option>
+                      <option value="BreakEnd">Konce pauzy</option>
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={handleOpenNewManualLog}
+                      className="px-3.5 py-1.5 rounded-xl bg-sky-700 hover:bg-sky-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer ml-auto"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Ručně zapsat docházku</span>
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* POHLED 1: REÁLNÁ DOCHÁZKA (PÍCHAČKY Z KIOSKU) */}
+            {attendanceSubTab === 'real' && (
+              <div className="space-y-6">
+                {/* KPI Přehled reálné docházky */}
+                {(() => {
+                  const filtered = attendanceLogs.filter((log) => {
+                    const dt = new Date(log.timestamp);
+                    if (dt.getFullYear() !== attendanceYear || (dt.getMonth() + 1) !== attendanceMonth) return false;
+                    if (attendanceEmpFilter !== 'all' && log.employeeId.toString() !== attendanceEmpFilter) return false;
+                    if (attendanceEventFilter !== 'all' && log.eventType !== attendanceEventFilter) return false;
+                    return true;
+                  });
+                  const ins = filtered.filter((l) => l.eventType === 'ClockIn').length;
+                  const outs = filtered.filter((l) => l.eventType === 'ClockOut').length;
+                  const manualEdits = filtered.filter((l) => l.isManualEdit || l.originalTimestamp).length;
+
+                  return (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="bg-white/95 border border-stone-200 p-4 rounded-2xl shadow-sm">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400 block">Záznamů celkem</span>
+                        <span className="text-2xl font-extrabold text-stone-800 font-mono mt-1 block">{filtered.length}</span>
+                        <span className="text-xs text-stone-500 mt-0.5 block">{attendanceMonth}/{attendanceYear}</span>
+                      </div>
+                      <div className="bg-white/95 border border-stone-200 p-4 rounded-2xl shadow-sm">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 block">Zaznamenané příchody</span>
+                        <span className="text-2xl font-extrabold text-emerald-800 font-mono mt-1 block">{ins}</span>
+                        <span className="text-xs text-stone-500 mt-0.5 block">Zahájení směn na dílně</span>
+                      </div>
+                      <div className="bg-white/95 border border-stone-200 p-4 rounded-2xl shadow-sm">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-stone-600 block">Zaznamenané odchody</span>
+                        <span className="text-2xl font-extrabold text-stone-700 font-mono mt-1 block">{outs}</span>
+                        <span className="text-xs text-stone-500 mt-0.5 block">Ukončení směn</span>
+                      </div>
+                      <div className="bg-white/95 border border-amber-200 p-4 rounded-2xl shadow-sm bg-amber-50/40">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-amber-800 block">Ruční korekce (Audit)</span>
+                        <span className="text-2xl font-extrabold text-amber-900 font-mono mt-1 block">{manualEdits}</span>
+                        <span className="text-xs text-amber-700 mt-0.5 block">Změny s historií původního času</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Tabulka docházky */}
+                <div className="bg-white/95 border border-stone-200 rounded-2xl shadow-sm overflow-hidden">
+                  <div className="p-4 border-b border-stone-200 flex items-center justify-between">
+                    <h3 className="font-heading font-bold text-sm text-[#193F34] uppercase tracking-wider flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-sky-700" />
+                      <span>Provozní záznamy píchaček z kiosku</span>
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={loadAttendance}
+                      className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500 cursor-pointer"
+                      title="Obnovit záznamy"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${loadingAttendance ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-[#193F34] text-[#F7F3E9] font-bold uppercase tracking-wider text-[11px]">
+                        <tr>
+                          <th className="px-4 py-3">Pracovník</th>
+                          <th className="px-4 py-3">Datum a čas</th>
+                          <th className="px-4 py-3">Typ události</th>
+                          <th className="px-4 py-3">Poznámka / Auditní stopa</th>
+                          <th className="px-4 py-3 text-right">Akce</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-200">
+                        {(() => {
+                          const filtered = attendanceLogs.filter((log) => {
+                            const dt = new Date(log.timestamp);
+                            if (dt.getFullYear() !== attendanceYear || (dt.getMonth() + 1) !== attendanceMonth) return false;
+                            if (attendanceEmpFilter !== 'all' && log.employeeId.toString() !== attendanceEmpFilter) return false;
+                            if (attendanceEventFilter !== 'all' && log.eventType !== attendanceEventFilter) return false;
+                            return true;
+                          });
+
+                          if (filtered.length === 0) {
+                            return (
+                              <tr>
+                                <td colSpan={5} className="px-4 py-12 text-center text-stone-500 italic">
+                                  Pro vybrané období a filtry nebyly nalezeny žádné záznamy docházky.
+                                </td>
+                              </tr>
+                            );
+                          }
+
+                          return filtered.map((log) => {
+                            const dt = new Date(log.timestamp);
+                            return (
+                              <tr key={log.id} className="hover:bg-stone-50/80 transition-colors">
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-full bg-stone-100 border border-stone-300 flex items-center justify-center overflow-hidden shrink-0">
+                                      {log.photoUrl ? (
+                                        <img src={log.photoUrl} alt={log.employeeName} className="w-full h-full object-cover" />
+                                      ) : (
+                                        <span className="text-[11px] font-bold text-stone-600">
+                                          {log.employeeName.slice(0, 2).toUpperCase()}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div>
+                                      <span className="font-bold text-stone-900 block">{log.employeeName}</span>
+                                      <span className="text-[10px] text-stone-500 font-mono">
+                                        {log.employeeNumber ? `#${log.employeeNumber} • ` : ''}{log.contractType}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 font-mono font-medium text-stone-800">
+                                  {dt.toLocaleDateString('cs-CZ')} {dt.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                </td>
+                                <td className="px-4 py-3">
+                                  {log.eventType === 'ClockIn' && (
+                                    <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200">
+                                      🟢 Příchod
+                                    </span>
+                                  )}
+                                  {log.eventType === 'ClockOut' && (
+                                    <span className="px-2.5 py-1 rounded-full bg-rose-100 text-rose-800 font-bold border border-rose-200">
+                                      🔴 Odchod
+                                    </span>
+                                  )}
+                                  {log.eventType === 'BreakStart' && (
+                                    <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 font-bold border border-amber-200">
+                                      ☕ Začátek pauzy
+                                    </span>
+                                  )}
+                                  {log.eventType === 'BreakEnd' && (
+                                    <span className="px-2.5 py-1 rounded-full bg-sky-100 text-sky-800 font-bold border border-sky-200">
+                                      🔵 Konec pauzy
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-stone-600">
+                                  {log.originalTimestamp ? (
+                                    <div className="space-y-0.5">
+                                      <span className="inline-block text-[11px] px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-bold border border-amber-300">
+                                        ⚠️ Upraveno adminem ({log.modifiedBy || 'Admin'})
+                                      </span>
+                                      <div className="text-[10px] text-stone-500 font-mono">
+                                        Původní čas: {new Date(log.originalTimestamp).toLocaleString('cs-CZ')}
+                                      </div>
+                                      {log.note && <div className="text-xs text-stone-700 italic">Důvod: {log.note}</div>}
+                                    </div>
+                                  ) : (
+                                    <span>{log.note || '—'}</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-right">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenEditLog(log)}
+                                      className="p-1.5 rounded-lg hover:bg-stone-200 text-stone-700 cursor-pointer"
+                                      title="Upravit čas docházky"
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteLog(log.id)}
+                                      className="p-1.5 rounded-lg hover:bg-rose-100 text-rose-600 cursor-pointer"
+                                      title="Smazat záznam"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          });
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* POHLED 2: NORMOVANÁ DOCHÁZKA (PRO ÚČETNÍ) */}
+            {attendanceSubTab === 'normed' && (
+              <div className="space-y-6">
+                {/* Banner metodiky */}
+                <div className="bg-gradient-to-r from-emerald-900 to-[#193F34] text-[#F7F3E9] p-5 rounded-2xl shadow-md space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Calculator className="w-5 h-5 text-[#D7BE97]" />
+                    <h3 className="font-heading font-bold text-base text-[#D7BE97] uppercase tracking-wider">
+                      Zákonná metodika propočtu normohodin pro účetní
+                    </h3>
+                  </div>
+                  <p className="text-xs text-stone-200 leading-relaxed max-w-4xl">
+                    Normovaná docházka slouží jako oficiální podklad pro mzdovou účetní pro brigádníky na DPP/DPČ a práci z domova.
+                    Propočet odpracovaných hodin je striktně dán vzorcem: <strong className="text-white bg-black/30 px-2 py-0.5 rounded font-mono">Normohodiny = (Schválené kusy × Sazba Kč/ks) / 135 Kč</strong>.
+                    Odpracovaná doba je automaticky rozvržena do pracovních dnů od <strong>08:00</strong> (max <strong>8 hod./den</strong>).
+                    Po 4 hodinách práce je ze zákona vložena <strong>30minutová přestávka na oběd (12:00–12:30)</strong>, odpolední blok končí nejpozději v <strong>16:30</strong>.
+                  </p>
+                </div>
+
+                {/* Seznam zaměstnanců a jejich normovaných výkazů */}
+                {(() => {
+                  const targetEmployees = employees.filter((emp) => {
+                    if (attendanceEmpFilter !== 'all' && emp.id.toString() !== attendanceEmpFilter) return false;
+                    return true;
+                  });
+
+                  if (targetEmployees.length === 0) {
+                    return (
+                      <div className="bg-white/95 border border-stone-200 rounded-2xl p-12 text-center text-stone-500 italic">
+                        Nebyl nalezen žádný zaměstnanec odpovídající filtrům.
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-6">
+                      {targetEmployees.map((emp) => {
+                        const normed = computeNormedShiftsForEmployee(emp.id, attendanceYear, attendanceMonth);
+                        const annualHours = getAnnualHoursForEmployee(emp.id, attendanceYear);
+                        const annualLimit = emp.contractHoursLimit || 300;
+                        const annualPct = Math.min(100, Math.round((annualHours / annualLimit) * 100));
+
+                        return (
+                          <div key={emp.id} className="bg-white/95 border border-stone-200 rounded-2xl shadow-sm overflow-hidden">
+                            {/* Hlavička karty zaměstnance */}
+                            <div className="p-5 border-b border-stone-200 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-stone-50/60">
+                              <div className="flex items-center gap-3.5">
+                                <div className="w-12 h-12 rounded-full bg-stone-100 border-2 border-stone-300 flex items-center justify-center overflow-hidden shrink-0">
+                                  {emp.photoUrl ? (
+                                    <img src={emp.photoUrl} alt={emp.fullName} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <span className="text-sm font-bold text-stone-600">
+                                      {emp.fullName.slice(0, 2).toUpperCase()}
+                                    </span>
+                                  )}
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <h4 className="font-heading font-bold text-base text-stone-900">{emp.fullName}</h4>
+                                    {emp.employmentStatus === 'Troublemaker' && (
+                                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-bold">
+                                        ⚠️ Potížista
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-2 text-xs text-stone-500 mt-0.5">
+                                    <span>Os. č.: <strong className="font-mono text-stone-800">#{emp.employeeNumber || 'neuvedeno'}</strong></span>
+                                    <span>•</span>
+                                    <span>Smlouva: <strong className="text-stone-800">{emp.contractType}</strong></span>
+                                    <span>•</span>
+                                    <span>Účet: <strong className="font-mono text-stone-800">{emp.bankAccount || '⚠️ Chybí účet'}</strong></span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Akční tlačítko pro tisk A4 */}
+                              <div className="flex items-center gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedPrintNormedEmp(emp)}
+                                  className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-2 shadow-sm cursor-pointer"
+                                >
+                                  <Printer className="w-4 h-4" />
+                                  <span>Vytisknout Normovaný výkaz (A4)</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Tělo karty: KPI + DPP limit + Kalendář směn */}
+                            <div className="p-5 space-y-5">
+                              {/* KPI řádek pro daný měsíc */}
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                <div className="p-3 bg-stone-50 rounded-xl border border-stone-200">
+                                  <span className="text-[11px] font-bold uppercase text-stone-500 block">Schválená produkce</span>
+                                  <span className="text-xl font-extrabold text-stone-900 font-mono mt-0.5 block">{normed.totalPieces} ks</span>
+                                  <span className="text-[11px] text-stone-500 block">bez vad v měsíci</span>
+                                </div>
+                                <div className="p-3 bg-stone-50 rounded-xl border border-stone-200">
+                                  <span className="text-[11px] font-bold uppercase text-stone-500 block">Vadné kusy (Zmetky)</span>
+                                  <span className={`text-xl font-extrabold font-mono mt-0.5 block ${normed.totalDefects > 0 ? 'text-rose-700' : 'text-stone-600'}`}>
+                                    {normed.totalDefects} ks
+                                  </span>
+                                  <span className="text-[11px] text-stone-500 block">vyřazeno bez nároku na mzdu</span>
+                                </div>
+                                <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-200">
+                                  <span className="text-[11px] font-bold uppercase text-emerald-800 block">Hrubá odměna</span>
+                                  <span className="text-xl font-extrabold text-emerald-900 font-mono mt-0.5 block">
+                                    {normed.totalEarned.toLocaleString('cs-CZ')} Kč
+                                  </span>
+                                  <span className="text-[11px] text-emerald-700 block">k vyplacení na účet</span>
+                                </div>
+                                <div className="p-3 bg-sky-50/60 rounded-xl border border-sky-200">
+                                  <span className="text-[11px] font-bold uppercase text-sky-800 block">Normohodiny pro účetní</span>
+                                  <span className="text-xl font-extrabold text-sky-900 font-mono mt-0.5 block">
+                                    {normed.totalNormHours.toFixed(2)} h
+                                  </span>
+                                  <span className="text-[11px] text-sky-700 block">při sazbě 135 Kč / h</span>
+                                </div>
+                              </div>
+
+                              {/* Sledování limitu smlouvy (např. DPP 300 hodin ročně) */}
+                              <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200 space-y-1.5">
+                                <div className="flex justify-between items-center text-xs">
+                                  <span className="font-bold text-stone-700">
+                                    Roční fond pracovní doby ({attendanceYear}) – Limit {annualLimit} h:
+                                  </span>
+                                  <span className={`font-mono font-bold ${annualHours > annualLimit ? 'text-rose-700' : annualHours >= 250 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                    {annualHours} h / {annualLimit} h ({annualPct} %)
+                                  </span>
+                                </div>
+                                <div className="w-full bg-stone-200 h-2 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full transition-all ${
+                                      annualHours > annualLimit ? 'bg-rose-600' : annualHours >= 250 ? 'bg-amber-500' : 'bg-emerald-600'
+                                    }`}
+                                    style={{ width: `${Math.min(100, annualPct)}%` }}
+                                  />
+                                </div>
+                                {annualHours > annualLimit && (
+                                  <div className="text-[11px] text-rose-700 font-bold flex items-center gap-1 mt-1">
+                                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                                    <span>POZOR: Překročen zákonný limit 300 hodin pro DPP! Nutno řešit DPČ nebo HPP.</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Upozornění na přetečení měsíčního fondu pracovních dnů */}
+                              {normed.overflowHours > 0 && (
+                                <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 flex items-center gap-2">
+                                  <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
+                                  <span>
+                                    <strong>Upozornění pro účetní:</strong> Objem normohodin ({normed.totalNormHours} h) přesáhl standardní fond {normed.workingDaysCount} pracovních dnů v měsíci ({normed.maxStandardHours} h). Nevyčerpaný přebytek {normed.overflowHours} h doporučujeme převést do následujícího měsíce.
+                                  </span>
+                                </div>
+                              )}
+
+                              {/* Tabulka rozpočtených směn pro účetní */}
+                              <div>
+                                <h5 className="font-heading font-bold text-xs uppercase tracking-wider text-stone-700 mb-2">
+                                  Rozpis pracovních dnů a časů (podklad pro mzdový list)
+                                </h5>
+
+                                {normed.shifts.length === 0 ? (
+                                  <div className="p-4 bg-stone-50 border border-stone-200 rounded-xl text-center text-xs text-stone-500 italic">
+                                    V měsíci {attendanceMonth}/{attendanceYear} nemá pracovník žádnou schválenou produkci.
+                                  </div>
+                                ) : (
+                                  <div className="overflow-x-auto border border-stone-200 rounded-xl">
+                                    <table className="w-full text-left text-xs">
+                                      <thead className="bg-stone-100 text-stone-700 font-bold border-b border-stone-200">
+                                        <tr>
+                                          <th className="px-3 py-2">Datum</th>
+                                          <th className="px-3 py-2">Den</th>
+                                          <th className="px-3 py-2">Začátek</th>
+                                          <th className="px-3 py-2">Zákonná pauza (oběd)</th>
+                                          <th className="px-3 py-2">Konec směny</th>
+                                          <th className="px-3 py-2 text-right">Čisté normohodiny</th>
+                                          <th className="px-3 py-2 text-right">Mzda (135 Kč/h)</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-stone-200">
+                                        {normed.shifts.map((s, idx) => (
+                                          <tr key={idx} className="hover:bg-stone-50">
+                                            <td className="px-3 py-2 font-mono font-medium text-stone-900">{s.dateStr}</td>
+                                            <td className="px-3 py-2 font-medium text-stone-700">{s.dayName}</td>
+                                            <td className="px-3 py-2 font-mono text-emerald-800 font-bold">{s.startTime}</td>
+                                            <td className="px-3 py-2 text-stone-600">
+                                              {s.lunchStart ? (
+                                                <span className="font-mono text-amber-800 bg-amber-50 px-2 py-0.5 rounded">
+                                                  {s.lunchStart} – {s.lunchEnd} (30 min)
+                                                </span>
+                                              ) : (
+                                                <span className="text-stone-400">— (směna do 4h)</span>
+                                              )}
+                                            </td>
+                                            <td className="px-3 py-2 font-mono text-stone-800 font-bold">{s.endTime}</td>
+                                            <td className="px-3 py-2 text-right font-mono font-bold text-sky-900">{s.hours.toFixed(2)} h</td>
+                                            <td className="px-3 py-2 text-right font-mono font-bold text-stone-900">
+                                              {Math.round(s.hours * 135).toLocaleString('cs-CZ')} Kč
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                      <tfoot className="bg-stone-100 font-bold border-t border-stone-200">
+                                        <tr>
+                                          <td colSpan={5} className="px-3 py-2 text-right text-stone-800">
+                                            Celkem za {attendanceMonth}/{attendanceYear}:
+                                          </td>
+                                          <td className="px-3 py-2 text-right font-mono text-sky-900 text-sm">
+                                            {normed.totalNormHours.toFixed(2)} h
+                                          </td>
+                                          <td className="px-3 py-2 text-right font-mono text-emerald-900 text-sm">
+                                            {normed.totalEarned.toLocaleString('cs-CZ')} Kč
+                                          </td>
+                                        </tr>
+                                      </tfoot>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
           </div>
         )}
 
+        {/* FÁZE 4: ZÁLOŽKA PRODUKCE & SCHVALOVÁNÍ KUSŮ */}
         {activeTab === 'production' && (
-          <div className="bg-white/95 border border-stone-300 rounded-2xl p-8 text-center space-y-3">
-            <PackageCheck className="w-12 h-12 text-[#9B623F] mx-auto" />
-            <h3 className="font-heading font-bold text-xl text-[#193F34]">Fáze 4: Produkce & Schvalování kusů</h3>
-            <p className="text-sm text-stone-600 max-w-lg mx-auto">
-              Denní zápis, odevzdané kusy, schválení vedoucím a automatické generování zmetkových protokolů.
-            </p>
+          <div className="space-y-6">
+            {/* KPI Souhrnné karty produkce */}
+            {(() => {
+              const totalSubmitted = productionLogs.reduce((acc, p) => acc + (p.submittedPieces || 0), 0);
+              const approvedLogs = productionLogs.filter((p) => p.status === 'Approved');
+              const totalApproved = approvedLogs.reduce((acc, p) => acc + (p.validatedPieces || 0), 0);
+              const totalDefects = productionLogs.reduce((acc, p) => acc + (p.defectPieces || 0), 0);
+              const totalMoney = approvedLogs.reduce((acc, p) => acc + (p.earnedCzk || 0), 0);
+              const totalNormH = totalMoney > 0 ? (totalMoney / 135.0) : 0;
+              const pendingCount = productionLogs.filter((p) => p.status === 'Pending').length;
+
+              return (
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                  <div className="bg-white/95 border border-stone-200 p-4 rounded-2xl shadow-sm">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-stone-500 block">Nahlášeno celkem</span>
+                    <span className="text-2xl font-extrabold text-stone-900 font-mono mt-1 block">{totalSubmitted}</span>
+                    <span className="text-xs text-stone-500 mt-0.5 block">odevzdaných kusů</span>
+                  </div>
+                  <div className="bg-white/95 border border-stone-200 p-4 rounded-2xl shadow-sm">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 block">Schváleno k proplacení</span>
+                    <span className="text-2xl font-extrabold text-emerald-800 font-mono mt-1 block">{totalApproved}</span>
+                    <span className="text-xs text-emerald-700 mt-0.5 block">bezvadných kusů</span>
+                  </div>
+                  <div className="bg-white/95 border border-rose-200 p-4 rounded-2xl shadow-sm bg-rose-50/30">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-rose-700 block">Vadné kusy (Zmetky)</span>
+                    <span className="text-2xl font-extrabold text-rose-800 font-mono mt-1 block">{totalDefects}</span>
+                    <span className="text-xs text-rose-600 mt-0.5 block">vyřazeno bez mzdy</span>
+                  </div>
+                  <div className="bg-white/95 border border-stone-200 p-4 rounded-2xl shadow-sm">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#9B623F] block">Finanční odměna</span>
+                    <span className="text-2xl font-extrabold text-[#9B623F] font-mono mt-1 block">
+                      {totalMoney.toLocaleString('cs-CZ')} Kč
+                    </span>
+                    <span className="text-xs text-stone-500 mt-0.5 block">ze schválených kusů</span>
+                  </div>
+                  <div className="bg-white/95 border border-stone-200 p-4 rounded-2xl shadow-sm">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-sky-800 block">Normohodiny celkem</span>
+                    <span className="text-2xl font-extrabold text-sky-900 font-mono mt-1 block">{totalNormH.toFixed(1)} h</span>
+                    <span className="text-xs text-stone-500 mt-0.5 block">při normě 135 Kč / h</span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Horní lišta s filtry a hromadným schválením */}
+            <div className="bg-white/95 border border-stone-200 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-2.5">
+                {/* Přepínač stavu */}
+                <div className="flex bg-stone-100 p-1 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => setProdStatusFilter('all')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      prodStatusFilter === 'all'
+                        ? 'bg-[#193F34] text-white shadow-sm'
+                        : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    Vše ({productionLogs.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProdStatusFilter('Pending')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      prodStatusFilter === 'Pending'
+                        ? 'bg-amber-600 text-white shadow-sm'
+                        : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    <span>Čeká na schválení</span>
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20">
+                      {productionLogs.filter((p) => p.status === 'Pending').length}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProdStatusFilter('Approved')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      prodStatusFilter === 'Approved'
+                        ? 'bg-emerald-700 text-white shadow-sm'
+                        : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    Schváleno ({productionLogs.filter((p) => p.status === 'Approved').length})
+                  </button>
+                </div>
+
+                {/* Filtr zakázky */}
+                <select
+                  value={prodOrderFilter}
+                  onChange={(e) => setProdOrderFilter(e.target.value)}
+                  className="bg-stone-50 px-3 py-1.5 rounded-xl border border-stone-200 text-xs font-semibold text-stone-800 focus:outline-none cursor-pointer max-w-[200px]"
+                >
+                  <option value="all">Všechny zakázky ({orders.length})</option>
+                  {orders.map((ord) => (
+                    <option key={ord.id} value={ord.id.toString()}>{ord.name}</option>
+                  ))}
+                </select>
+
+                {/* Filtr pracovníka */}
+                <select
+                  value={prodEmpFilter}
+                  onChange={(e) => setProdEmpFilter(e.target.value)}
+                  className="bg-stone-50 px-3 py-1.5 rounded-xl border border-stone-200 text-xs font-semibold text-stone-800 focus:outline-none cursor-pointer max-w-[200px]"
+                >
+                  <option value="all">Všichni pracovníci ({employees.length})</option>
+                  {employees.map((emp) => (
+                    <option key={emp.id} value={emp.id.toString()}>
+                      {emp.fullName} {emp.employeeNumber ? `(#${emp.employeeNumber})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Tlačítko pro hromadné schválení */}
+              <button
+                type="button"
+                onClick={handleApproveAllProd}
+                className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-2 shadow-sm cursor-pointer ml-auto"
+              >
+                <CheckCheck className="w-4 h-4" />
+                <span>Schválit vše čekající bez vad</span>
+              </button>
+            </div>
+
+            {/* Tabulka produkce */}
+            <div className="bg-white/95 border border-stone-200 rounded-2xl shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-stone-200 flex items-center justify-between">
+                <h3 className="font-heading font-bold text-sm text-[#193F34] uppercase tracking-wider flex items-center gap-2">
+                  <PackageCheck className="w-4 h-4 text-[#9B623F]" />
+                  <span>Výkazy produkce, kontrola vad a schvalování odměn</span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={loadProduction}
+                  className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500 cursor-pointer"
+                  title="Obnovit data"
+                >
+                  <RefreshCw className={`w-4 h-4 ${loadingProduction ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-[#193F34] text-[#F7F3E9] font-bold uppercase tracking-wider text-[11px]">
+                    <tr>
+                      <th className="px-4 py-3">Pracovník</th>
+                      <th className="px-4 py-3">Zakázka & Operace</th>
+                      <th className="px-4 py-3">Datum</th>
+                      <th className="px-4 py-3 text-right">Nahlášeno</th>
+                      <th className="px-4 py-3 text-right">K proplacení</th>
+                      <th className="px-4 py-3 text-right">Zmetky</th>
+                      <th className="px-4 py-3 text-right">Odměna / Norma</th>
+                      <th className="px-4 py-3">Stav</th>
+                      <th className="px-4 py-3 text-right">Akce</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-200">
+                    {(() => {
+                      const filtered = productionLogs.filter((p) => {
+                        if (prodStatusFilter !== 'all' && p.status !== prodStatusFilter) return false;
+                        if (prodOrderFilter !== 'all' && p.orderId.toString() !== prodOrderFilter) return false;
+                        if (prodEmpFilter !== 'all' && p.employeeId.toString() !== prodEmpFilter) return false;
+                        return true;
+                      });
+
+                      if (filtered.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={9} className="px-4 py-12 text-center text-stone-500 italic">
+                              Nebyly nalezeny žádné záznamy odevzdané produkce.
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      return filtered.map((log) => {
+                        const currentEdit = prodInlineEdits[log.id] || {
+                          val: log.status === 'Approved' ? log.validatedPieces : log.submittedPieces,
+                          def: log.defectPieces || 0,
+                          note: log.note || ''
+                        };
+
+                        return (
+                          <tr key={log.id} className="hover:bg-stone-50/80 transition-colors">
+                            {/* Pracovník */}
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-full bg-stone-100 border border-stone-300 flex items-center justify-center overflow-hidden shrink-0">
+                                  {log.photoUrl ? (
+                                    <img src={log.photoUrl} alt={log.employeeName} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <span className="text-[11px] font-bold text-stone-600">
+                                      {log.employeeName.slice(0, 2).toUpperCase()}
+                                    </span>
+                                  )}
+                                </div>
+                                <div>
+                                  <span className="font-bold text-stone-900 block">{log.employeeName}</span>
+                                  <span className="text-[10px] text-stone-500 font-mono">
+                                    {log.employeeNumber ? `#${log.employeeNumber} • ` : ''}{log.contractType}
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Zakázka & Operace */}
+                            <td className="px-4 py-3">
+                              <span className="font-bold text-stone-900 block">{log.orderName}</span>
+                              <span className="text-stone-600 text-[11px]">
+                                {log.operationName} <strong className="text-emerald-800">({log.ratePerPiece} Kč/ks)</strong>
+                              </span>
+                            </td>
+
+                            {/* Datum výroby */}
+                            <td className="px-4 py-3 font-mono text-stone-700">
+                              {new Date(log.date).toLocaleDateString('cs-CZ')}
+                            </td>
+
+                            {/* Nahlášeno */}
+                            <td className="px-4 py-3 text-right font-mono font-bold text-stone-800 text-sm">
+                              {log.submittedPieces} ks
+                            </td>
+
+                            {/* K proplacení (Validováno) */}
+                            <td className="px-4 py-3 text-right">
+                              {log.status === 'Pending' ? (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={currentEdit.val}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value, 10) || 0;
+                                    setProdInlineEdits({
+                                      ...prodInlineEdits,
+                                      [log.id]: { ...currentEdit, val }
+                                    });
+                                  }}
+                                  className="w-20 px-2 py-1 border border-stone-300 rounded-lg text-right font-mono font-bold text-emerald-800 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                                />
+                              ) : (
+                                <span className="font-mono font-bold text-emerald-800 text-sm">
+                                  {log.validatedPieces} ks
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Zmetky */}
+                            <td className="px-4 py-3 text-right">
+                              {log.status === 'Pending' ? (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={currentEdit.def}
+                                  onChange={(e) => {
+                                    const def = parseInt(e.target.value, 10) || 0;
+                                    setProdInlineEdits({
+                                      ...prodInlineEdits,
+                                      [log.id]: { ...currentEdit, def }
+                                    });
+                                  }}
+                                  className="w-16 px-2 py-1 border border-rose-300 rounded-lg text-right font-mono font-bold text-rose-800 focus:outline-none focus:ring-1 focus:ring-rose-600 bg-rose-50/50"
+                                />
+                              ) : (
+                                <span className={`font-mono font-bold text-sm ${log.defectPieces > 0 ? 'text-rose-700' : 'text-stone-400'}`}>
+                                  {log.defectPieces || 0} ks
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Odměna & Normohodiny */}
+                            <td className="px-4 py-3 text-right">
+                              <span className="font-mono font-bold text-stone-900 block">
+                                {log.earnedCzk.toLocaleString('cs-CZ')} Kč
+                              </span>
+                              <span className="text-[10px] text-sky-800 font-mono font-semibold block">
+                                {((log.normHours || (log.earnedCzk / 135.0))).toFixed(2)} h
+                              </span>
+                            </td>
+
+                            {/* Stav */}
+                            <td className="px-4 py-3">
+                              {log.status === 'Approved' ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200">
+                                  <Check className="w-3 h-3" />
+                                  <span>Schváleno</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 font-bold border border-amber-200 animate-pulse">
+                                  <Clock className="w-3 h-3" />
+                                  <span>Čeká na kontrolu</span>
+                                </span>
+                              )}
+                              {log.note && (
+                                <div className="text-[10px] text-stone-500 italic mt-0.5 max-w-[140px] truncate" title={log.note}>
+                                  {log.note}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Akce */}
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {log.status === 'Pending' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApproveProdItem(log)}
+                                    disabled={approvingProdId === log.id}
+                                    className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1 cursor-pointer shadow-sm text-xs"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>Schválit</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApproveProdItem(log)}
+                                    className="p-1.5 rounded-lg hover:bg-stone-200 text-stone-600 cursor-pointer"
+                                    title="Pře-schválit / upravit"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+
+                                {/* Pokud má záznam zmetky, nabídneme Zmetkový protokol A4 */}
+                                {(log.defectPieces || 0) > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedDefectLog(log)}
+                                    className="px-2.5 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold flex items-center gap-1 cursor-pointer border border-rose-300 text-[11px]"
+                                    title="Zobrazit / vytisknout Zmetkový protokol"
+                                  >
+                                    <FileWarning className="w-3.5 h-3.5 text-rose-700" />
+                                    <span>ZM-{log.id}</span>
+                                  </button>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteProdItem(log.id)}
+                                  className="p-1.5 rounded-lg hover:bg-rose-100 text-rose-600 cursor-pointer"
+                                  title="Smazat záznam"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         )}
 
@@ -3667,6 +4856,414 @@ export const AdminV2Page: React.FC<AdminV2PageProps> = ({ onLogout, onGoToKiosk,
                 className="px-5 py-2 rounded-xl bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold cursor-pointer"
               >
                 Zavřít kartu
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 1: RUČNÍ ZÁPIS / EDITACE DOCHÁZKY (S AUDITEM) */}
+      {showManualLogModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-stone-200 pb-3">
+              <h3 className="font-heading font-bold text-lg text-[#193F34] flex items-center gap-2">
+                <Clock className="w-5 h-5 text-sky-700" />
+                <span>{editingLogItem ? 'Úprava záznamu docházky (s auditem)' : 'Nový ruční záznam docházky'}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowManualLogModal(false);
+                  setEditingLogItem(null);
+                }}
+                className="p-1 rounded-lg text-stone-400 hover:text-stone-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveManualLog} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-stone-700 mb-1">Pracovník / Brigádník</label>
+                <select
+                  value={manualLogEmpId}
+                  onChange={(e) => setManualLogEmpId(e.target.value)}
+                  disabled={!!editingLogItem}
+                  className="w-full px-3 py-2 border border-stone-300 rounded-xl font-bold bg-white"
+                >
+                  {employees.map((emp) => (
+                    <option key={emp.id} value={emp.id.toString()}>
+                      {emp.fullName} {emp.employeeNumber ? `(#${emp.employeeNumber})` : ''} ({emp.contractType})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-stone-700 mb-1">Datum</label>
+                  <input
+                    type="date"
+                    value={manualLogDate}
+                    onChange={(e) => setManualLogDate(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 border border-stone-300 rounded-xl font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-stone-700 mb-1">Čas (HH:mm)</label>
+                  <input
+                    type="time"
+                    value={manualLogTime}
+                    onChange={(e) => setManualLogTime(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 border border-stone-300 rounded-xl font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-stone-700 mb-1">Typ docházkové události</label>
+                <select
+                  value={manualLogEventType}
+                  onChange={(e) => setManualLogEventType(e.target.value as any)}
+                  className="w-full px-3 py-2 border border-stone-300 rounded-xl font-bold bg-white"
+                >
+                  <option value="ClockIn">🟢 Příchod do práce</option>
+                  <option value="ClockOut">🔴 Odchod z práce</option>
+                  <option value="BreakStart">☕ Začátek pauzy</option>
+                  <option value="BreakEnd">🔵 Konec pauzy</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-stone-700 mb-1">
+                  Důvod ručního zápisu / opravy <span className="text-stone-400 font-normal">(auditní stopa)</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="např. Zapomenuté odpíchnutí při odchodu ze směny"
+                  value={manualLogNote}
+                  onChange={(e) => setManualLogNote(e.target.value)}
+                  className="w-full px-3 py-2 border border-stone-300 rounded-xl"
+                />
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 leading-relaxed">
+                ℹ️ <strong>Upozornění:</strong> Všechny ruční změny v docházce jsou trvale zaznamenávány do auditního logu včetně jména administrátora a původního strojového času.
+              </div>
+
+              <div className="pt-3 border-t border-stone-200 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowManualLogModal(false);
+                    setEditingLogItem(null);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-stone-200 hover:bg-stone-300 text-stone-800 font-bold cursor-pointer"
+                >
+                  Zrušit
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-sky-700 hover:bg-sky-800 text-white font-bold cursor-pointer shadow-sm"
+                >
+                  {editingLogItem ? 'Uložit opravu času' : 'Zapsat do docházky'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: NORMOVANÝ VÝKAZ DOCHÁZKY PRO ÚČETNÍ (A4 TISK) */}
+      {selectedPrintNormedEmp && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-4xl w-full p-8 shadow-2xl space-y-6 max-h-[92vh] overflow-y-auto print:max-h-none print:overflow-visible print:shadow-none print:p-0 print:border-none">
+            {/* Hlavička tiskopisu */}
+            <div className="flex items-start justify-between border-b-2 border-[#193F34] pb-4">
+              <div className="flex items-center gap-3">
+                <img src={GREENBERG_LOGO} alt="Greenberg" className="w-12 h-12 object-contain" />
+                <div>
+                  <h1 className="font-heading font-extrabold text-xl text-[#193F34] tracking-tight">
+                    MĚSÍČNÍ VÝKAZ NORMOVANÉ DOCHÁZKY
+                  </h1>
+                  <p className="text-xs text-stone-600 font-medium">
+                    Greenberg s.r.o. • Podklad pro mzdové účetnictví • Kípačky Attendance System
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-stone-500 uppercase font-bold">Zúčtovací období</div>
+                <div className="text-xl font-heading font-black text-emerald-800 font-mono">
+                  {String(attendanceMonth).padStart(2, '0')} / {attendanceYear}
+                </div>
+              </div>
+            </div>
+
+            {/* Identifikace zaměstnance */}
+            {(() => {
+              const normed = computeNormedShiftsForEmployee(selectedPrintNormedEmp.id, attendanceYear, attendanceMonth);
+              const annualHours = getAnnualHoursForEmployee(selectedPrintNormedEmp.id, attendanceYear);
+              const annualLimit = selectedPrintNormedEmp.contractHoursLimit || 300;
+
+              return (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-stone-50 rounded-xl border border-stone-200 text-xs">
+                    <div>
+                      <span className="text-stone-500 block uppercase font-bold text-[10px]">Jméno a příjmení:</span>
+                      <strong className="text-sm text-stone-900 block mt-0.5">{selectedPrintNormedEmp.fullName}</strong>
+                    </div>
+                    <div>
+                      <span className="text-stone-500 block uppercase font-bold text-[10px]">Osobní číslo & PIN:</span>
+                      <strong className="text-sm font-mono text-stone-800 block mt-0.5">
+                        #{selectedPrintNormedEmp.employeeNumber || 'neuvedeno'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-stone-500 block uppercase font-bold text-[10px]">Smlouva / Fond:</span>
+                      <strong className="text-sm text-stone-900 block mt-0.5">{selectedPrintNormedEmp.contractType}</strong>
+                      <span className="text-[10px] text-stone-500">Max {annualLimit} h/rok</span>
+                    </div>
+                    <div>
+                      <span className="text-stone-500 block uppercase font-bold text-[10px]">Výplata mzdy:</span>
+                      <strong className="text-xs font-mono text-stone-900 block mt-0.5">
+                        {selectedPrintNormedEmp.bankAccount || 'V hotovosti'}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Souhrnné údaje výkazu */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-center">
+                      <span className="text-[10px] uppercase font-bold text-emerald-800 block">Celkem schválená výroba</span>
+                      <span className="text-lg font-extrabold text-emerald-950 font-mono mt-0.5 block">{normed.totalPieces} ks</span>
+                    </div>
+                    <div className="p-3 bg-sky-50 rounded-xl border border-sky-200 text-center">
+                      <span className="text-[10px] uppercase font-bold text-sky-800 block">Celkem odpracováno normohodin</span>
+                      <span className="text-lg font-extrabold text-sky-950 font-mono mt-0.5 block">{normed.totalNormHours.toFixed(2)} h</span>
+                    </div>
+                    <div className="p-3 bg-stone-100 rounded-xl border border-stone-300 text-center">
+                      <span className="text-[10px] uppercase font-bold text-stone-700 block">Celková hrubá odměna (135 Kč/h)</span>
+                      <span className="text-lg font-extrabold text-stone-950 font-mono mt-0.5 block">
+                        {normed.totalEarned.toLocaleString('cs-CZ')} Kč
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Tabulka rozepsaných pracovních směn */}
+                  <div>
+                    <h4 className="font-heading font-bold text-xs uppercase tracking-wider text-[#193F34] mb-2">
+                      Rozpis odpracovaných směn a povinných přestávek
+                    </h4>
+                    <table className="w-full text-left text-xs border border-stone-300 rounded-xl overflow-hidden">
+                      <thead className="bg-[#193F34] text-[#F7F3E9] font-bold text-[11px]">
+                        <tr>
+                          <th className="px-3 py-2">Datum</th>
+                          <th className="px-3 py-2">Den</th>
+                          <th className="px-3 py-2">Začátek směny</th>
+                          <th className="px-3 py-2">Přestávka na oběd (30 min)</th>
+                          <th className="px-3 py-2">Konec směny</th>
+                          <th className="px-3 py-2 text-right">Čistá doba</th>
+                          <th className="px-3 py-2 text-right">Odměna</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-200">
+                        {normed.shifts.map((s, idx) => (
+                          <tr key={idx} className="hover:bg-stone-50">
+                            <td className="px-3 py-1.5 font-mono font-medium">{s.dateStr}</td>
+                            <td className="px-3 py-1.5">{s.dayName}</td>
+                            <td className="px-3 py-1.5 font-mono font-bold text-emerald-800">{s.startTime}</td>
+                            <td className="px-3 py-1.5 text-stone-600">
+                              {s.lunchStart ? `${s.lunchStart} – ${s.lunchEnd}` : '— (do 4 hod.)'}
+                            </td>
+                            <td className="px-3 py-1.5 font-mono font-bold">{s.endTime}</td>
+                            <td className="px-3 py-1.5 text-right font-mono font-bold text-sky-900">{s.hours.toFixed(2)} h</td>
+                            <td className="px-3 py-1.5 text-right font-mono font-bold">
+                              {Math.round(s.hours * 135).toLocaleString('cs-CZ')} Kč
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-stone-100 font-bold border-t border-stone-300">
+                        <tr>
+                          <td colSpan={5} className="px-3 py-2 text-right">Celkem:</td>
+                          <td className="px-3 py-2 text-right font-mono text-sky-950 text-sm">
+                            {normed.totalNormHours.toFixed(2)} h
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-emerald-950 text-sm">
+                            {normed.totalEarned.toLocaleString('cs-CZ')} Kč
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+
+                  {/* Sledování kumulativního limitu DPP */}
+                  <div className="p-3 bg-stone-50 border border-stone-200 rounded-xl text-xs space-y-1">
+                    <div className="flex justify-between items-center font-bold text-stone-700">
+                      <span>Stav čerpání ročního zákonného limitu smlouvy ({attendanceYear}):</span>
+                      <span className="font-mono">{annualHours} h z {annualLimit} h</span>
+                    </div>
+                    <div className="text-[11px] text-stone-500">
+                      Zbývá do vyčerpání zákonného limitu: <strong>{Math.max(0, annualLimit - annualHours).toFixed(1)} h</strong>.
+                    </div>
+                  </div>
+
+                  {/* Podpisová pole pro A4 tisk */}
+                  <div className="grid grid-cols-2 gap-12 pt-8 text-xs text-stone-700">
+                    <div className="text-center border-t border-stone-400 pt-2">
+                      <p className="font-bold text-stone-900">Podpis zaměstnance / brigádníka</p>
+                      <p className="text-[10px] text-stone-500 mt-0.5">Stvrzuji správnost vykázaných údajů</p>
+                    </div>
+                    <div className="text-center border-t border-stone-400 pt-2">
+                      <p className="font-bold text-stone-900">Mzdová účetní / Odpovědný vedoucí</p>
+                      <p className="text-[10px] text-stone-500 mt-0.5">Greenberg s.r.o. • Schváleno k výplatě</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Tlačítka modálu */}
+            <div className="pt-4 border-t border-stone-200 flex justify-end gap-3 print:hidden">
+              <button
+                type="button"
+                onClick={() => setSelectedPrintNormedEmp(null)}
+                className="px-4 py-2 rounded-xl bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold cursor-pointer"
+              >
+                Zavřít
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-2 cursor-pointer shadow-sm"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Vytisknout výkaz pro účetní (A4)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: ZMETKOVÝ PROTOKOL – VADNÉ KUSY (A4 TISK) */}
+      {selectedDefectLog && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-3xl w-full p-8 shadow-2xl space-y-6 max-h-[92vh] overflow-y-auto print:max-h-none print:overflow-visible print:shadow-none print:p-0 print:border-none">
+            {/* Hlavička Zmetkového protokolu */}
+            <div className="flex items-start justify-between border-b-2 border-rose-800 pb-4">
+              <div className="flex items-center gap-3">
+                <img src={GREENBERG_LOGO} alt="Greenberg" className="w-12 h-12 object-contain" />
+                <div>
+                  <h1 className="font-heading font-extrabold text-xl text-rose-900 tracking-tight">
+                    ZMETKOVÝ PROTOKOL – ZÁPIS O VADNÝCH KUSECH
+                  </h1>
+                  <p className="text-xs text-stone-600 font-medium">
+                    Greenberg s.r.o. • Kontrola jakosti a podklad pro krácení mezd
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-stone-500 uppercase font-bold">Číslo protokolu</div>
+                <div className="text-xl font-heading font-black text-rose-800 font-mono">
+                  ZM-{selectedDefectLog.id}
+                </div>
+              </div>
+            </div>
+
+            {/* Údaje o zmetkovitosti */}
+            <div className="space-y-6 text-xs text-stone-800">
+              <div className="grid grid-cols-2 gap-4 p-4 bg-stone-50 rounded-xl border border-stone-200">
+                <div>
+                  <span className="text-stone-500 block uppercase font-bold text-[10px]">Pracovník / Brigádník:</span>
+                  <strong className="text-sm text-stone-900 block mt-0.5">{selectedDefectLog.employeeName}</strong>
+                  {selectedDefectLog.employeeNumber && (
+                    <span className="text-stone-600 block font-mono text-[11px]">
+                      Osobní číslo: #{selectedDefectLog.employeeNumber}
+                    </span>
+                  )}
+                  <span className="text-stone-600 block text-[11px]">Smlouva: {selectedDefectLog.contractType}</span>
+                </div>
+                <div>
+                  <span className="text-stone-500 block uppercase font-bold text-[10px]">Zakázka a operace:</span>
+                  <strong className="text-sm text-stone-900 block mt-0.5">{selectedDefectLog.orderName}</strong>
+                  <span className="text-stone-700 block text-[11px]">
+                    Operace: <strong>{selectedDefectLog.operationName}</strong>
+                  </span>
+                  <span className="text-stone-600 block text-[11px]">
+                    Datum výroby: <strong>{new Date(selectedDefectLog.date).toLocaleDateString('cs-CZ')}</strong>
+                  </span>
+                </div>
+              </div>
+
+              {/* Bilance kusů a finanční dopad */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-3 bg-stone-100 rounded-xl border border-stone-300 text-center">
+                  <span className="text-[10px] uppercase font-bold text-stone-600 block">Nahlášeno celkem</span>
+                  <span className="text-lg font-extrabold text-stone-900 font-mono mt-0.5 block">
+                    {selectedDefectLog.submittedPieces} ks
+                  </span>
+                </div>
+                <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-center">
+                  <span className="text-[10px] uppercase font-bold text-emerald-800 block">Schváleno bez vad</span>
+                  <span className="text-lg font-extrabold text-emerald-950 font-mono mt-0.5 block">
+                    {selectedDefectLog.validatedPieces} ks
+                  </span>
+                  <span className="text-[10px] text-emerald-700 block mt-0.5">k proplacení ({selectedDefectLog.earnedCzk} Kč)</span>
+                </div>
+                <div className="p-3 bg-rose-50 rounded-xl border-2 border-rose-400 text-center">
+                  <span className="text-[10px] uppercase font-bold text-rose-800 block">Vyřazeno vadných kusů</span>
+                  <span className="text-xl font-black text-rose-900 font-mono mt-0.5 block">
+                    {selectedDefectLog.defectPieces} ks
+                  </span>
+                  <span className="text-[10px] text-rose-700 font-bold block mt-0.5">neplaceno</span>
+                </div>
+              </div>
+
+              {/* Popis vady */}
+              <div className="p-4 bg-stone-50 border border-stone-200 rounded-xl space-y-1">
+                <span className="font-bold text-stone-700 block uppercase text-[10px]">Popis a důvod vyřazení vady:</span>
+                <p className="text-stone-900 italic">
+                  {selectedDefectLog.note || 'Při vstupní / výstupní kontrole bylo zjištěno nesplnění technologického postupu a tolerancí.'}
+                </p>
+              </div>
+
+              {/* Právní poučení dle zákoníku práce */}
+              <div className="p-3.5 bg-rose-50/70 border-l-4 border-rose-600 rounded-r-xl text-[11px] text-rose-950 leading-relaxed">
+                <strong>Právní doložka a poučení:</strong> Dle § 208 a násl. zákoníku práce nevzniká zaměstnanci ani brigádníkovi nárok na odměnu za práci na kusech, které byly zhotoveny vadně vinou pracovníka. Brigádník svým podpisem níže potvrzuje seznámení se se zjištěnými vadami a bere výsledek kontroly na vědomí.
+              </div>
+
+              {/* Podpisová pole */}
+              <div className="grid grid-cols-2 gap-12 pt-8 text-xs text-stone-700">
+                <div className="text-center border-t border-stone-400 pt-2">
+                  <p className="font-bold text-stone-900">Kontrolu provedl (Greenberg)</p>
+                  <p className="text-[10px] text-stone-500 mt-0.5">Odpovědný vedoucí provozu</p>
+                </div>
+                <div className="text-center border-t border-stone-400 pt-2">
+                  <p className="font-bold text-stone-900">Pracovník / Brigádník</p>
+                  <p className="text-[10px] text-stone-500 mt-0.5">Podpis – převzal a bere na vědomí</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Tlačítka modálu */}
+            <div className="pt-4 border-t border-stone-200 flex justify-end gap-3 print:hidden">
+              <button
+                type="button"
+                onClick={() => setSelectedDefectLog(null)}
+                className="px-4 py-2 rounded-xl bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold cursor-pointer"
+              >
+                Zavřít
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-5 py-2 rounded-xl bg-rose-800 hover:bg-rose-900 text-white text-xs font-bold flex items-center gap-2 cursor-pointer shadow-sm"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Vytisknout zmetkový protokol (A4)</span>
               </button>
             </div>
           </div>

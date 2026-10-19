@@ -663,6 +663,18 @@ export async function approveProduction(data: {
   }
 }
 
+export async function approveAllProduction(): Promise<{ success: boolean; approvedCount: number }> {
+  const res = await fetch(`${API_BASE}?action=approve-all-production`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Chyba při hromadném schvalování produkce');
+  }
+  return res.json();
+}
+
 export async function deleteProductionLog(id: number): Promise<void> {
   const res = await fetch(`${API_BASE}?action=delete-production&id=${id}`, {
     method: 'POST',

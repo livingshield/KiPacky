@@ -590,6 +590,10 @@ BEGIN
         [Unit] NVARCHAR(50) NOT NULL DEFAULT 'ks'
     );
 END
+
+-- FÁZE 4: Zmetkové protokoly
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_ProductionLogs]') AND name = 'DefectProtocolDocId')
+    ALTER TABLE [Kipacky].[kipa_ProductionLogs] ADD [DefectProtocolDocId] INT NULL;
 ";
             using (var cmd = new SqlCommand(sql, conn))
             {
@@ -2014,7 +2018,7 @@ WHERE Id = @id", conn))
         {
             conn.Open();
             string sql = @"
-SELECT TOP 500 l.Id, l.EmployeeId, e.FullName, e.ContractType, l.Timestamp, l.EventType, l.IsManualEdit, l.Note, l.OriginalTimestamp, l.ModifiedByAdmin, l.ModifiedBy, l.ModifiedAt, l.ModifyReason
+SELECT TOP 500 l.Id, l.EmployeeId, e.FullName, e.ContractType, l.Timestamp, l.EventType, l.IsManualEdit, l.Note, l.OriginalTimestamp, l.ModifiedByAdmin, l.ModifiedBy, l.ModifiedAt, l.ModifyReason, e.EmployeeNumber, e.PhotoUrl
 FROM [Kipacky].[kipa_AttendanceLogs] l
 JOIN [Kipacky].[kipa_Employees] e ON l.EmployeeId = e.Id
 WHERE 1=1 ";
@@ -2040,6 +2044,8 @@ WHERE 1=1 ";
                         string modBy = reader.IsDBNull(10) ? "" : reader.GetString(10);
                         DateTime? modAt = reader.IsDBNull(11) ? (DateTime?)null : reader.GetDateTime(11);
                         string modReason = reader.IsDBNull(12) ? "" : reader.GetString(12);
+                        string empNum = reader.IsDBNull(13) ? "" : reader.GetString(13);
+                        string photo = reader.IsDBNull(14) ? "" : reader.GetString(14);
 
                         list.Add(new Dictionary<string, object>
                         {
@@ -2055,7 +2061,9 @@ WHERE 1=1 ";
                             { "modifiedByAdmin", modByAdmin },
                             { "modifiedBy", modBy },
                             { "modifiedAt", modAt.HasValue ? modAt.Value.ToString("s") : null },
-                            { "modifyReason", modReason }
+                            { "modifyReason", modReason },
+                            { "employeeNumber", empNum },
+                            { "photoUrl", photo }
                         });
                     }
                 }
@@ -3190,11 +3198,13 @@ DELETE FROM [Kipacky].[kipa_MaterialDispatches] WHERE Id = @id;", conn))
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
+            EnsureSchemaMigrations(conn);
             string sql = @"
 SELECT TOP 500 p.Id, p.EmployeeId, e.FullName, e.ContractType,
        p.OrderId, o.Name AS OrderName,
        p.OperationId, op.Name AS OperationName, op.NormPerHour, op.RatePerPiece,
-       p.[Date], p.SubmittedPieces, p.ValidatedPieces, p.DefectPieces, p.[Status], p.ModifiedBy, p.Note
+       p.[Date], p.SubmittedPieces, p.ValidatedPieces, p.DefectPieces, p.[Status], p.ModifiedBy, p.Note,
+       p.DefectProtocolDocId, e.EmployeeNumber, e.PhotoUrl
 FROM [Kipacky].[kipa_ProductionLogs] p
 JOIN [Kipacky].[kipa_Employees] e ON p.EmployeeId = e.Id
 JOIN [Kipacky].[kipa_Orders] o ON p.OrderId = o.Id
@@ -3223,6 +3233,10 @@ WHERE 1=1 ";
 
                         double earnedCzk = Math.Round(effectivePieces * rate, 2);
                         double prodHours = norm > 0 ? Math.Round((double)effectivePieces / norm, 2) : 0.0;
+                        double normHours = Math.Round((effectivePieces * rate) / 135.0, 2);
+                        int? defectDocId = reader.IsDBNull(17) ? (int?)null : reader.GetInt32(17);
+                        string empNum = reader.IsDBNull(18) ? "" : reader.GetString(18);
+                        string photo = reader.IsDBNull(19) ? "" : reader.GetString(19);
 
                         list.Add(new Dictionary<string, object>
                         {
@@ -3244,7 +3258,11 @@ WHERE 1=1 ";
                             { "modifiedBy", reader.IsDBNull(15) ? "" : reader.GetString(15) },
                             { "note", reader.IsDBNull(16) ? "" : reader.GetString(16) },
                             { "earnedCzk", earnedCzk },
-                            { "productiveHours", prodHours }
+                            { "productiveHours", prodHours },
+                            { "normHours", normHours },
+                            { "defectProtocolDocId", defectDocId },
+                            { "employeeNumber", empNum },
+                            { "photoUrl", photo }
                         });
                     }
                 }
@@ -3263,32 +3281,122 @@ WHERE 1=1 ";
 
         if (id <= 0)
         {
-            SendError(context, 400, "Neplatn\u00E9 ID z\u00E1znamu produkce.");
+            SendError(context, 400, "Neplatné ID záznamu produkce.");
             return;
         }
 
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
+            EnsureSchemaMigrations(conn);
+
+            int empId = 0;
+            string empName = "";
+            string empNumber = "";
+            string orderName = "";
+            string opName = "";
+            DateTime prodDate = DateTime.Now;
+
+            using (var cmdInfo = new SqlCommand(@"
+SELECT p.EmployeeId, e.FullName, e.EmployeeNumber, o.Name AS OrderName, op.Name AS OpName, p.[Date]
+FROM [Kipacky].[kipa_ProductionLogs] p
+JOIN [Kipacky].[kipa_Employees] e ON p.EmployeeId = e.Id
+JOIN [Kipacky].[kipa_Orders] o ON p.OrderId = o.Id
+JOIN [Kipacky].[kipa_Operations] op ON p.OperationId = op.Id
+WHERE p.Id = @id", conn))
+            {
+                cmdInfo.Parameters.AddWithValue("@id", id);
+                using (var r = cmdInfo.ExecuteReader())
+                {
+                    if (r.Read())
+                    {
+                        empId = r.GetInt32(0);
+                        empName = r.GetString(1);
+                        empNumber = r.IsDBNull(2) ? "" : r.GetString(2);
+                        orderName = r.GetString(3);
+                        opName = r.GetString(4);
+                        prodDate = r.GetDateTime(5);
+                    }
+                }
+            }
+
+            int? defectDocId = null;
+            if (defectPieces > 0 && empId > 0)
+            {
+                string title = "Zmetkový protokol č. ZM-" + id + " – " + orderName;
+                string shortText = "Při kontrole zakázky '" + orderName + "' (" + opName + ") bylo vyřazeno " + defectPieces + " vadných kusů. Prosíme o potvrzení.";
+                string fullText = @"<div style=""font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937;"">
+<h2 style=""color: #991b1b; margin-bottom: 4px;"">ZMETKOVÝ PROTOKOL – VADNÉ KUSY</h2>
+<p style=""margin-top: 0; color: #6b7280; font-size: 14px;"">Číslo protokolu: <strong>ZM-" + id + @"</strong> | Zjištěno: " + DateTime.Now.ToString("dd. MM. yyyy HH:mm") + @"</p>
+<table style=""width: 100%; margin-bottom: 16px; border-collapse: collapse;"">
+<tr><td style=""width: 160px; padding: 4px 0; color: #4b5563;""><strong>Pracovník / Brigádník:</strong></td><td><strong>" + empName + @"</strong>" + (string.IsNullOrEmpty(empNumber) ? "" : (" (os. č. " + empNumber + ")")) + @"</td></tr>
+<tr><td style=""padding: 4px 0; color: #4b5563;""><strong>Zakázka:</strong></td><td>" + orderName + @"</td></tr>
+<tr><td style=""padding: 4px 0; color: #4b5563;""><strong>Operace / úkon:</strong></td><td>" + opName + @"</td></tr>
+<tr><td style=""padding: 4px 0; color: #4b5563;""><strong>Datum výroby:</strong></td><td>" + prodDate.ToString("dd. MM. yyyy") + @"</td></tr>
+<tr><td style=""padding: 4px 0; color: #4b5563;""><strong>Schváleno bez vad:</strong></td><td><strong style=""color: #065f46;"">" + validatedPieces + @" ks</strong> (k proplacení)</td></tr>
+<tr><td style=""padding: 4px 0; color: #991b1b;""><strong>Počet zmetků (vadných kusů):</strong></td><td><strong style=""color: #991b1b; font-size: 16px;"">" + defectPieces + @" ks</strong> (neplacených)</td></tr>
+<tr><td style=""padding: 4px 0; color: #4b5563;""><strong>Kontrolu provedl:</strong></td><td>" + ADMIN_USER + @"</td></tr>
+" + (string.IsNullOrEmpty(note) ? "" : ("<tr><td style=\"padding: 4px 0; color: #4b5563;\"><strong>Důvod vyřazení / poznámka:</strong></td><td>" + note + "</td></tr>")) + @"
+</table>
+<div style=""margin-top: 20px; padding: 12px; background: #fef2f2; border-left: 4px solid #ef4444; font-size: 13px; color: #991b1b;"">
+<strong>Vyjádření kontroly:</strong> Uvedený počet kusů nesplňuje kvalitativní standardy zakázky a nelze jej uznat k proplacení. Svým elektronickým potvrzením brigádník bere tento záznam o zmetcích na vědomí.
+</div>
+</div>";
+
+                using (var cmdDoc = new SqlCommand(@"
+INSERT INTO [Kipacky].[kipa_Documents] (Title, Content, ShortText, FullText, IsActive, TargetEmployeeId, DocumentType)
+VALUES (@t, @s, @s, @f, 1, @emp, 'DefectProtocol');
+SELECT SCOPE_IDENTITY();", conn))
+                {
+                    cmdDoc.Parameters.AddWithValue("@t", title);
+                    cmdDoc.Parameters.AddWithValue("@s", shortText);
+                    cmdDoc.Parameters.AddWithValue("@f", fullText);
+                    cmdDoc.Parameters.AddWithValue("@emp", empId);
+                    defectDocId = Convert.ToInt32(cmdDoc.ExecuteScalar());
+                }
+            }
+
             using (var cmd = new SqlCommand(@"
 UPDATE [Kipacky].[kipa_ProductionLogs]
 SET ValidatedPieces = @val,
     DefectPieces = @def,
     [Status] = 'Approved',
     ModifiedBy = @mod,
-    Note = @note
+    Note = @note,
+    DefectProtocolDocId = @docId
 WHERE Id = @id", conn))
             {
                 cmd.Parameters.AddWithValue("@val", validatedPieces);
                 cmd.Parameters.AddWithValue("@def", defectPieces);
                 cmd.Parameters.AddWithValue("@mod", ADMIN_USER);
                 cmd.Parameters.AddWithValue("@note", string.IsNullOrEmpty(note) ? (object)DBNull.Value : note);
+                cmd.Parameters.AddWithValue("@docId", defectDocId.HasValue ? (object)defectDocId.Value : DBNull.Value);
                 cmd.Parameters.AddWithValue("@id", id);
                 cmd.ExecuteNonQuery();
             }
         }
 
         SendJson(context, new Dictionary<string, object> { { "success", true } });
+    }
+
+    private void HandleApproveAllProduction(HttpContext context)
+    {
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            using (var cmd = new SqlCommand(@"
+UPDATE [Kipacky].[kipa_ProductionLogs]
+SET ValidatedPieces = SubmittedPieces,
+    DefectPieces = 0,
+    [Status] = 'Approved',
+    ModifiedBy = @mod
+WHERE [Status] = 'Pending'", conn))
+            {
+                cmd.Parameters.AddWithValue("@mod", ADMIN_USER);
+                int count = cmd.ExecuteNonQuery();
+                SendJson(context, new Dictionary<string, object> { { "success", true }, { "approvedCount", count } });
+            }
+        }
     }
 
     private void HandleDeleteProduction(HttpContext context)
