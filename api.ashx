@@ -1,4 +1,4 @@
-﻿<%@ WebHandler Language="C#" Class="KipackyApiHandler" %>
+<%@ WebHandler Language="C#" Class="KipackyApiHandler" %>
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -421,6 +421,42 @@ ELSE
 BEGIN
     UPDATE [Kipacky].[kipa_AdminUsers] SET PinCode = '1408' WHERE LOWER(Username) = 'lordkikin' AND (PinCode IS NULL OR PinCode = '');
 END";
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.ExecuteNonQuery();
+            }
+
+            EnsureSchemaMigrations(conn);
+        }
+        catch { }
+    }
+
+    private void EnsureSchemaMigrations(SqlConnection conn)
+    {
+        try
+        {
+            string sql = @"
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Employees]') AND name = 'EmployeeNumber')
+    ALTER TABLE [Kipacky].[kipa_Employees] ADD [EmployeeNumber] NVARCHAR(50) NULL;
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Employees]') AND name = 'Street')
+    ALTER TABLE [Kipacky].[kipa_Employees] ADD [Street] NVARCHAR(200) NULL;
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Employees]') AND name = 'City')
+    ALTER TABLE [Kipacky].[kipa_Employees] ADD [City] NVARCHAR(100) NULL;
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Employees]') AND name = 'ContractHoursLimit')
+    ALTER TABLE [Kipacky].[kipa_Employees] ADD [ContractHoursLimit] INT NULL;
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Employees]') AND name = 'EmploymentStatus')
+    ALTER TABLE [Kipacky].[kipa_Employees] ADD [EmploymentStatus] NVARCHAR(50) NOT NULL DEFAULT 'Active';
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Employees]') AND name = 'DefaultWorkplace')
+    ALTER TABLE [Kipacky].[kipa_Employees] ADD [DefaultWorkplace] NVARCHAR(50) NULL;
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Employees]') AND name = 'PhotoUrl')
+    ALTER TABLE [Kipacky].[kipa_Employees] ADD [PhotoUrl] NVARCHAR(MAX) NULL;
+";
             using (var cmd = new SqlCommand(sql, conn))
             {
                 cmd.ExecuteNonQuery();
@@ -1544,7 +1580,17 @@ WHERE p.EmployeeId = @empId AND p.[Date] >= @start AND p.[Date] < @end", conn))
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
-            using (var cmd = new SqlCommand("SELECT Id, FullName, PinCode, ContractType, IsActive, CreatedAt, Phone, Email, BankAccount, PersonalDataConfirmedAt, ContractStartDate, ContractEndDate, ISNULL(SelfScheduled, 0) AS SelfScheduled FROM [Kipacky].[kipa_Employees] ORDER BY IsActive DESC, FullName ASC", conn))
+            EnsureSchemaMigrations(conn);
+
+            string sql = @"
+SELECT Id, FullName, PinCode, ContractType, IsActive, CreatedAt, Phone, Email, BankAccount, 
+       PersonalDataConfirmedAt, ContractStartDate, ContractEndDate, ISNULL(SelfScheduled, 0) AS SelfScheduled,
+       EmployeeNumber, Street, City, ContractHoursLimit, ISNULL(EmploymentStatus, 'Active') AS EmploymentStatus,
+       DefaultWorkplace, PhotoUrl
+FROM [Kipacky].[kipa_Employees] 
+ORDER BY IsActive DESC, FullName ASC";
+
+            using (var cmd = new SqlCommand(sql, conn))
             {
                 using (var reader = cmd.ExecuteReader())
                 {
@@ -1554,6 +1600,13 @@ WHERE p.EmployeeId = @empId AND p.[Date] >= @start AND p.[Date] < @end", conn))
                         DateTime? cStart = reader.IsDBNull(10) ? (DateTime?)null : reader.GetDateTime(10);
                         DateTime? cEnd = reader.IsDBNull(11) ? (DateTime?)null : reader.GetDateTime(11);
                         bool selfScheduled = reader.GetBoolean(12);
+                        string empNum = reader.IsDBNull(13) ? "" : reader.GetString(13);
+                        string street = reader.IsDBNull(14) ? "" : reader.GetString(14);
+                        string city = reader.IsDBNull(15) ? "" : reader.GetString(15);
+                        int? limitHours = reader.IsDBNull(16) ? (int?)null : reader.GetInt32(16);
+                        string empStatus = reader.IsDBNull(17) ? "Active" : reader.GetString(17);
+                        string workplace = reader.IsDBNull(18) ? "" : reader.GetString(18);
+                        string photoUrl = reader.IsDBNull(19) ? "" : reader.GetString(19);
 
                         list.Add(new Dictionary<string, object>
                         {
@@ -1569,7 +1622,14 @@ WHERE p.EmployeeId = @empId AND p.[Date] >= @start AND p.[Date] < @end", conn))
                             { "personalDataConfirmedAt", confAt.HasValue ? confAt.Value.ToString("s") : null },
                             { "contractStartDate", cStart.HasValue ? cStart.Value.ToString("yyyy-MM-dd") : null },
                             { "contractEndDate", cEnd.HasValue ? cEnd.Value.ToString("yyyy-MM-dd") : null },
-                            { "selfScheduled", selfScheduled }
+                            { "selfScheduled", selfScheduled },
+                            { "employeeNumber", empNum },
+                            { "street", street },
+                            { "city", city },
+                            { "contractHoursLimit", limitHours },
+                            { "employmentStatus", empStatus },
+                            { "defaultWorkplace", workplace },
+                            { "photoUrl", photoUrl }
                         });
                     }
                 }
@@ -1609,7 +1669,7 @@ WHERE p.EmployeeId = @empId AND p.[Date] >= @start AND p.[Date] < @end", conn))
         var data = ReadJsonBody(context);
         string name = data.ContainsKey("fullName") ? Convert.ToString(data["fullName"]).Trim() : "";
         string pin = data.ContainsKey("pinCode") ? Convert.ToString(data["pinCode"]).Trim() : "";
-        string contract = data.ContainsKey("contractType") ? Convert.ToString(data["contractType"]).Trim() : "DPP";
+        string contract = data.ContainsKey("contractType") ? Convert.ToString(data["contractType"]).Trim() : "DPP (300 hodin)";
         string phone = data.ContainsKey("phone") ? Convert.ToString(data["phone"]).Trim() : "";
         string email = data.ContainsKey("email") ? Convert.ToString(data["email"]).Trim() : "";
         string bankAccount = data.ContainsKey("bankAccount") ? Convert.ToString(data["bankAccount"]).Trim() : "";
@@ -1620,12 +1680,22 @@ WHERE p.EmployeeId = @empId AND p.[Date] >= @start AND p.[Date] < @end", conn))
         DateTime? contractEndDate = (!string.IsNullOrEmpty(ceStr)) ? (DateTime?)DateTime.Parse(ceStr) : null;
         bool selfScheduled = data.ContainsKey("selfScheduled") && Convert.ToBoolean(data["selfScheduled"]);
 
-        if (string.IsNullOrWhiteSpace(name)) { SendError(context, 400, "Jm\u00E9no je povinn\u00ED."); return; }
-        if (pin.Length != 4) { SendError(context, 400, "PIN mus\u00ED m\u00EDt p\u0159esn\u011B 4 \u010D\u00EDslice."); return; }
+        string employeeNumber = data.ContainsKey("employeeNumber") ? Convert.ToString(data["employeeNumber"]).Trim() : "";
+        string street = data.ContainsKey("street") ? Convert.ToString(data["street"]).Trim() : "";
+        string city = data.ContainsKey("city") ? Convert.ToString(data["city"]).Trim() : "";
+        int? contractHoursLimit = data.ContainsKey("contractHoursLimit") && data["contractHoursLimit"] != null ? (int?)Convert.ToInt32(data["contractHoursLimit"]) : null;
+        string employmentStatus = data.ContainsKey("employmentStatus") ? Convert.ToString(data["employmentStatus"]).Trim() : "Active";
+        string defaultWorkplace = data.ContainsKey("defaultWorkplace") ? Convert.ToString(data["defaultWorkplace"]).Trim() : "Na dílně";
+        string photoUrl = data.ContainsKey("photoUrl") ? Convert.ToString(data["photoUrl"]) : "";
+
+        if (string.IsNullOrWhiteSpace(name)) { SendError(context, 400, "Jméno je povinné."); return; }
+        if (pin.Length != 4) { SendError(context, 400, "PIN musí mít přesně 4 číslice."); return; }
 
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
+            EnsureSchemaMigrations(conn);
+
             using (var chk = new SqlCommand("SELECT TOP 1 FullName, IsActive FROM [Kipacky].[kipa_Employees] WHERE PinCode = @pin", conn))
             {
                 chk.Parameters.AddWithValue("@pin", pin);
@@ -1635,21 +1705,23 @@ WHERE p.EmployeeId = @empId AND p.[Date] >= @start AND p.[Date] < @end", conn))
                     {
                         string existingName = reader.GetString(0);
                         bool isAct = reader.GetBoolean(1);
-                        string statusText = isAct ? "aktivn\u00ED" : "neaktivn\u00ED";
-                        SendError(context, 400, "Tento PIN (" + pin + ") ji\u017E m\u00E1 p\u0159i\u0159azen jin\u00FD " + statusText + " zam\u011Bstnanec (" + existingName + "). PIN mus\u00ED b\u00FDt unik\u00E1tn\u00ED.");
+                        string statusText = isAct ? "aktivní" : "neaktivní";
+                        SendError(context, 400, "Tento PIN (" + pin + ") již má přiřazen jiný " + statusText + " zaměstnanec (" + existingName + "). PIN musí být unikátní.");
                         return;
                     }
                 }
             }
 
             using (var cmd = new SqlCommand(@"
-INSERT INTO [Kipacky].[kipa_Employees] (FullName, PinCode, ContractType, IsActive, CreatedAt, Phone, Email, BankAccount, ContractStartDate, ContractEndDate, SelfScheduled)
+INSERT INTO [Kipacky].[kipa_Employees] 
+(FullName, PinCode, ContractType, IsActive, CreatedAt, Phone, Email, BankAccount, ContractStartDate, ContractEndDate, SelfScheduled, EmployeeNumber, Street, City, ContractHoursLimit, EmploymentStatus, DefaultWorkplace, PhotoUrl)
 OUTPUT INSERTED.Id
-VALUES (@n, @p, @c, @a, GETUTCDATE(), @ph, @em, @ba, @cs, @ce, @ss)", conn))
+VALUES 
+(@n, @p, @c, @a, GETUTCDATE(), @ph, @em, @ba, @cs, @ce, @ss, @en, @st, @ct, @chl, @es, @dw, @pu)", conn))
             {
                 cmd.Parameters.AddWithValue("@n", name);
                 cmd.Parameters.AddWithValue("@p", pin);
-                cmd.Parameters.AddWithValue("@c", string.IsNullOrEmpty(contract) ? "DPP" : contract.ToUpperInvariant());
+                cmd.Parameters.AddWithValue("@c", string.IsNullOrEmpty(contract) ? "DPP (300 hodin)" : contract);
                 cmd.Parameters.AddWithValue("@a", isActive);
                 cmd.Parameters.AddWithValue("@ph", string.IsNullOrEmpty(phone) ? (object)DBNull.Value : phone);
                 cmd.Parameters.AddWithValue("@em", string.IsNullOrEmpty(email) ? (object)DBNull.Value : email);
@@ -1657,6 +1729,14 @@ VALUES (@n, @p, @c, @a, GETUTCDATE(), @ph, @em, @ba, @cs, @ce, @ss)", conn))
                 cmd.Parameters.AddWithValue("@cs", contractStartDate.HasValue ? (object)contractStartDate.Value : DBNull.Value);
                 cmd.Parameters.AddWithValue("@ce", contractEndDate.HasValue ? (object)contractEndDate.Value : DBNull.Value);
                 cmd.Parameters.AddWithValue("@ss", selfScheduled);
+                cmd.Parameters.AddWithValue("@en", string.IsNullOrEmpty(employeeNumber) ? (object)DBNull.Value : employeeNumber);
+                cmd.Parameters.AddWithValue("@st", string.IsNullOrEmpty(street) ? (object)DBNull.Value : street);
+                cmd.Parameters.AddWithValue("@ct", string.IsNullOrEmpty(city) ? (object)DBNull.Value : city);
+                cmd.Parameters.AddWithValue("@chl", contractHoursLimit.HasValue ? (object)contractHoursLimit.Value : DBNull.Value);
+                cmd.Parameters.AddWithValue("@es", string.IsNullOrEmpty(employmentStatus) ? "Active" : employmentStatus);
+                cmd.Parameters.AddWithValue("@dw", string.IsNullOrEmpty(defaultWorkplace) ? (object)DBNull.Value : defaultWorkplace);
+                cmd.Parameters.AddWithValue("@pu", string.IsNullOrEmpty(photoUrl) ? (object)DBNull.Value : photoUrl);
+
                 int newId = Convert.ToInt32(cmd.ExecuteScalar());
 
                 SendJson(context, new Dictionary<string, object>
@@ -1671,7 +1751,14 @@ VALUES (@n, @p, @c, @a, GETUTCDATE(), @ph, @em, @ba, @cs, @ce, @ss)", conn))
                     { "bankAccount", bankAccount },
                     { "contractStartDate", contractStartDate.HasValue ? contractStartDate.Value.ToString("yyyy-MM-dd") : null },
                     { "contractEndDate", contractEndDate.HasValue ? contractEndDate.Value.ToString("yyyy-MM-dd") : null },
-                    { "selfScheduled", selfScheduled }
+                    { "selfScheduled", selfScheduled },
+                    { "employeeNumber", employeeNumber },
+                    { "street", street },
+                    { "city", city },
+                    { "contractHoursLimit", contractHoursLimit },
+                    { "employmentStatus", employmentStatus },
+                    { "defaultWorkplace", defaultWorkplace },
+                    { "photoUrl", photoUrl }
                 });
             }
         }
@@ -1681,7 +1768,7 @@ VALUES (@n, @p, @c, @a, GETUTCDATE(), @ph, @em, @ba, @cs, @ce, @ss)", conn))
     {
         var data = ReadJsonBody(context);
         int id = Convert.ToInt32(context.Request.QueryString["id"] ?? (data.ContainsKey("id") ? data["id"] : 0));
-        if (id <= 0) { SendError(context, 400, "Neplatn\u00E9 ID zam\u011Bstnance."); return; }
+        if (id <= 0) { SendError(context, 400, "Neplatné ID zaměstnance."); return; }
 
         string name = data.ContainsKey("fullName") ? Convert.ToString(data["fullName"]).Trim() : null;
         string pin = data.ContainsKey("pinCode") ? Convert.ToString(data["pinCode"]).Trim() : null;
@@ -1696,12 +1783,22 @@ VALUES (@n, @p, @c, @a, GETUTCDATE(), @ph, @em, @ba, @cs, @ce, @ss)", conn))
         DateTime? contractEndDate = (!string.IsNullOrEmpty(ceStr)) ? (DateTime?)DateTime.Parse(ceStr) : null;
         bool selfScheduled = data.ContainsKey("selfScheduled") && Convert.ToBoolean(data["selfScheduled"]);
 
+        string employeeNumber = data.ContainsKey("employeeNumber") ? Convert.ToString(data["employeeNumber"]).Trim() : null;
+        string street = data.ContainsKey("street") ? Convert.ToString(data["street"]).Trim() : null;
+        string city = data.ContainsKey("city") ? Convert.ToString(data["city"]).Trim() : null;
+        int? contractHoursLimit = data.ContainsKey("contractHoursLimit") && data["contractHoursLimit"] != null ? (int?)Convert.ToInt32(data["contractHoursLimit"]) : null;
+        string employmentStatus = data.ContainsKey("employmentStatus") ? Convert.ToString(data["employmentStatus"]).Trim() : null;
+        string defaultWorkplace = data.ContainsKey("defaultWorkplace") ? Convert.ToString(data["defaultWorkplace"]).Trim() : null;
+        string photoUrl = data.ContainsKey("photoUrl") ? Convert.ToString(data["photoUrl"]) : null;
+
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
+            EnsureSchemaMigrations(conn);
+
             if (!string.IsNullOrEmpty(pin))
             {
-                if (pin.Length != 4) { SendError(context, 400, "PIN mus\u00ED m\u00EDt p\u0159esn\u011B 4 \u010D\u00EDslice."); return; }
+                if (pin.Length != 4) { SendError(context, 400, "PIN musí mít přesně 4 číslice."); return; }
 
                 using (var chk = new SqlCommand("SELECT TOP 1 FullName, IsActive FROM [Kipacky].[kipa_Employees] WHERE PinCode = @pin AND Id != @id", conn))
                 {
@@ -1713,8 +1810,8 @@ VALUES (@n, @p, @c, @a, GETUTCDATE(), @ph, @em, @ba, @cs, @ce, @ss)", conn))
                         {
                             string existingName = reader.GetString(0);
                             bool isAct = reader.GetBoolean(1);
-                            string statusText = isAct ? "aktivn\u00ED" : "neaktivn\u00ED";
-                            SendError(context, 400, "Tento PIN (" + pin + ") ji\u017E m\u00E1 p\u0159i\u0159azen jin\u00FD " + statusText + " zam\u011Bstnanec (" + existingName + "). PIN mus\u00ED b\u00FDt unik\u00E1tn\u00ED.");
+                            string statusText = isAct ? "aktivní" : "neaktivní";
+                            SendError(context, 400, "Tento PIN (" + pin + ") již má přiřazen jiný " + statusText + " zaměstnanec (" + existingName + "). PIN musí být unikátní.");
                             return;
                         }
                     }
@@ -1732,7 +1829,14 @@ SET FullName = ISNULL(@n, FullName),
     BankAccount = ISNULL(@ba, BankAccount),
     ContractStartDate = @cs,
     ContractEndDate = @ce,
-    SelfScheduled = @ss
+    SelfScheduled = @ss,
+    EmployeeNumber = ISNULL(@en, EmployeeNumber),
+    Street = ISNULL(@st, Street),
+    City = ISNULL(@ct, City),
+    ContractHoursLimit = ISNULL(@chl, ContractHoursLimit),
+    EmploymentStatus = ISNULL(@es, EmploymentStatus),
+    DefaultWorkplace = ISNULL(@dw, DefaultWorkplace),
+    PhotoUrl = ISNULL(@pu, PhotoUrl)
 WHERE Id = @id", conn))
             {
                 cmd.Parameters.AddWithValue("@n", (object)name ?? DBNull.Value);
@@ -1745,6 +1849,13 @@ WHERE Id = @id", conn))
                 cmd.Parameters.AddWithValue("@cs", contractStartDate.HasValue ? (object)contractStartDate.Value : DBNull.Value);
                 cmd.Parameters.AddWithValue("@ce", contractEndDate.HasValue ? (object)contractEndDate.Value : DBNull.Value);
                 cmd.Parameters.AddWithValue("@ss", selfScheduled);
+                cmd.Parameters.AddWithValue("@en", (object)employeeNumber ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@st", (object)street ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@ct", (object)city ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@chl", contractHoursLimit.HasValue ? (object)contractHoursLimit.Value : DBNull.Value);
+                cmd.Parameters.AddWithValue("@es", (object)employmentStatus ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@dw", (object)defaultWorkplace ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@pu", (object)photoUrl ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@id", id);
                 cmd.ExecuteNonQuery();
             }

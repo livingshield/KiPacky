@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Users,
   CalendarCheck,
@@ -78,9 +78,10 @@ import { APP_VERSION } from '../version';
 interface AdminPageProps {
   onLogout: () => void;
   onGoToKiosk: () => void;
+  onSwitchToV2?: () => void;
 }
 
-export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) => {
+export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk, onSwitchToV2 }) => {
   const [activeTab, setActiveTab] = useState<
     'employees' | 'logs' | 'production' | 'hr' | 'reports'
   >('employees');
@@ -1000,6 +1001,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk }) =
 
           {/* Pravé akce */}
           <div className="flex items-center gap-2">
+            {onSwitchToV2 && (
+              <button
+                type="button"
+                onClick={onSwitchToV2}
+                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                title="Přepnout do nové verze administrace (v2)"
+              >
+                <span>Nová Administrace (v2)</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+
             {/* Tlačítko Notifikací */}
             <button
               type="button"

@@ -1,4 +1,7 @@
 $localConfigPath = Join-Path $PSScriptRoot "appsettings.local.json"
+if (-not (Test-Path $localConfigPath)) {
+    $localConfigPath = Join-Path $PSScriptRoot "backend\appsettings.local.json"
+}
 if (Test-Path $localConfigPath) {
     $cfg = Get-Content $localConfigPath -Raw | ConvertFrom-Json
     $ftpHost = $cfg.FTP.Host

@@ -310,6 +310,13 @@ export async function createEmployee(data: {
   contractStartDate?: string;
   contractEndDate?: string;
   selfScheduled?: boolean;
+  employeeNumber?: string;
+  street?: string;
+  city?: string;
+  contractHoursLimit?: number;
+  employmentStatus?: string;
+  defaultWorkplace?: string;
+  photoUrl?: string;
 }): Promise<Employee> {
   const res = await fetch(`${API_BASE}?action=create-employee`, {
     method: 'POST',
@@ -336,6 +343,13 @@ export async function updateEmployee(
     contractStartDate?: string;
     contractEndDate?: string;
     selfScheduled?: boolean;
+    employeeNumber?: string;
+    street?: string;
+    city?: string;
+    contractHoursLimit?: number;
+    employmentStatus?: string;
+    defaultWorkplace?: string;
+    photoUrl?: string;
   }
 ): Promise<Employee> {
   const res = await fetch(`${API_BASE}?action=update-employee&id=${id}`, {

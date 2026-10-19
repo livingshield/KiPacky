@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { KioskPage } from './pages/KioskPage';
 import { LoginPage } from './pages/LoginPage';
 import { AdminPage } from './pages/AdminPage';
+import { AdminV2Page } from './pages/AdminV2Page';
 import { DocumentViewerPage } from './pages/DocumentViewerPage';
 import { checkAuth } from './api/client';
 import { Lock } from 'lucide-react';
 
 export const App: React.FC = () => {
-  const [view, setView] = useState<'kiosk' | 'login' | 'admin' | 'document'>('kiosk');
+  const [view, setView] = useState<'kiosk' | 'login' | 'admin' | 'adminV2' | 'document'>('kiosk');
   const [adminUser, setAdminUser] = useState<string | null>(null);
   const [viewerDocId, setViewerDocId] = useState<number | null>(null);
 
@@ -24,8 +25,11 @@ export const App: React.FC = () => {
       }
     }
 
-    // Poznámka: Z bezpečnostních důvodů se automaticky nepřeskakuje na admina.
-    // Při kliknutí na zámeček na kiosku se VŽDY vyžaduje zadání Master PINu / hesla.
+    // Uložená preference verze administrace
+    const savedAdminVersion = localStorage.getItem('kipacky_admin_version');
+    if (savedAdminVersion === 'v1') {
+      // prefer v1
+    }
   }, []);
 
   const handleOpenAdmin = () => {
@@ -35,12 +39,27 @@ export const App: React.FC = () => {
 
   const handleLoginSuccess = (username: string) => {
     setAdminUser(username);
-    setView('admin');
+    const pref = localStorage.getItem('kipacky_admin_version');
+    if (pref === 'v1') {
+      setView('admin');
+    } else {
+      setView('adminV2');
+    }
   };
 
   const handleLogout = () => {
     setAdminUser(null);
     setView('kiosk');
+  };
+
+  const handleSwitchToV1 = () => {
+    localStorage.setItem('kipacky_admin_version', 'v1');
+    setView('admin');
+  };
+
+  const handleSwitchToV2 = () => {
+    localStorage.setItem('kipacky_admin_version', 'v2');
+    setView('adminV2');
   };
 
   const isDark = view === 'kiosk';
@@ -90,6 +109,15 @@ export const App: React.FC = () => {
         <AdminPage
           onLogout={handleLogout}
           onGoToKiosk={() => setView('kiosk')}
+          onSwitchToV2={handleSwitchToV2}
+        />
+      )}
+
+      {view === 'adminV2' && (
+        <AdminV2Page
+          onLogout={handleLogout}
+          onGoToKiosk={() => setView('kiosk')}
+          onSwitchToV1={handleSwitchToV1}
         />
       )}
     </div>

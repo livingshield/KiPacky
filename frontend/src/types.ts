@@ -2,7 +2,7 @@ export interface Employee {
   id: number;
   fullName: string;
   pinCode: string;
-  contractType: string; // DPP, DPČ, HPP, IČO
+  contractType: string; // DPP (300 hodin), DPČ 32 hodin, DPČ 80 hodin, HPP 40 hodin, HPP 80 hodin, HPP 160 hodin, etc.
   isActive: boolean;
   createdAt: string;
   phone?: string;
@@ -12,6 +12,17 @@ export interface Employee {
   contractStartDate?: string | null;
   contractEndDate?: string | null;
   selfScheduled?: boolean;
+  // Nová pole pro Fázi 1 (dle docházka.docx):
+  employeeNumber?: string; // Evidenční/personální číslo (např. 104)
+  street?: string; // Ulice č.p.
+  city?: string; // Obec
+  contractHoursLimit?: number; // Fond hodin (např. 300, 32, 80, 40, 80, 160)
+  employmentStatus?: 'Active' | 'Terminated' | 'Troublemaker'; // Aktivní, Ukončen, Potížista
+  defaultWorkplace?: 'Doma' | 'Na dílně'; // Místo realizace
+  photoUrl?: string; // Avatar / foto (pouze pro admina)
+  assignedOrderInfo?: string; // Přidělená zakázka + úkon
+  workedHours?: number; // Vypočtené odpracované normohodiny
+  remainingHours?: number; // Vypočtený zbytek hodin
 }
 
 export interface OrderItem {
