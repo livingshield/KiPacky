@@ -307,3 +307,49 @@ export interface AdminUserItem {
   pinCode: string;
   role: string;
 }
+
+// --- FÁZE 3: Sklad materiálu & výdejky ---
+
+export interface OrderMaterialItem {
+  id: number;
+  orderId: number;
+  orderName?: string;
+  targetPieces?: number;
+  name: string;
+  deliveredQuantity: number;
+  unit: string;
+  consumptionPerPiece: number;
+  matchesTargetPieces: boolean;
+  note?: string;
+  receivedAt?: string;
+  createdBy?: string;
+  dispatchedQuantity: number;
+  remainingQuantity: number;
+}
+
+export interface MaterialDispatchItemDetail {
+  id: number;
+  materialId: number;
+  materialName: string;
+  quantity: number;
+  returnedQuantity: number;
+  unit: string;
+}
+
+export interface MaterialDispatchItem {
+  id: number;
+  orderId: number;
+  orderName: string;
+  employeeId: number;
+  employeeName: string;
+  employeeNumber?: string;
+  plannedPieces: number;
+  dispatchedAt: string;
+  dispatchedBy?: string;
+  documentId?: number | null;
+  confirmedAt?: string | null;
+  status: string;
+  note?: string;
+  items: MaterialDispatchItemDetail[];
+}
+

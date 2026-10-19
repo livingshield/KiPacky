@@ -158,6 +158,32 @@ public class KipackyApiHandler : IHttpHandler
                     RequireAuth(context);
                     HandleDeleteOrderAssignment(context);
                     break;
+
+                // --- ADMIN: FÁZE 3 – SKLAD MATERIÁLU, PŘÍJEM & VÝDEJ ---
+                case "get-order-materials":
+                    RequireAuth(context);
+                    HandleGetOrderMaterials(context);
+                    break;
+                case "save-order-material":
+                    RequireAuth(context);
+                    HandleSaveOrderMaterial(context);
+                    break;
+                case "delete-order-material":
+                    RequireAuth(context);
+                    HandleDeleteOrderMaterial(context);
+                    break;
+                case "get-material-dispatches":
+                    RequireAuth(context);
+                    HandleGetMaterialDispatches(context);
+                    break;
+                case "save-material-dispatch":
+                    RequireAuth(context);
+                    HandleSaveMaterialDispatch(context);
+                    break;
+                case "delete-material-dispatch":
+                    RequireAuth(context);
+                    HandleDeleteMaterialDispatch(context);
+                    break;
                 case "get-production":
                     RequireAuth(context);
                     HandleGetProduction(context);
@@ -511,6 +537,59 @@ BEGIN
         [Note] NVARCHAR(MAX) NULL
     );
 END
+
+-- FÁZE 3: Rozšíření dokumentů (cílený zaměstnanec a typ dokumentu)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Documents]') AND name = 'TargetEmployeeId')
+    ALTER TABLE [Kipacky].[kipa_Documents] ADD [TargetEmployeeId] INT NULL;
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Documents]') AND name = 'DocumentType')
+    ALTER TABLE [Kipacky].[kipa_Documents] ADD [DocumentType] NVARCHAR(50) NOT NULL DEFAULT 'General';
+
+-- FÁZE 3: Sklad materiálu k zakázkám (OrderMaterials)
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'kipa_OrderMaterials' AND schema_id = SCHEMA_ID('Kipacky'))
+BEGIN
+    CREATE TABLE [Kipacky].[kipa_OrderMaterials] (
+        [Id] INT IDENTITY(1,1) PRIMARY KEY,
+        [OrderId] INT NOT NULL,
+        [Name] NVARCHAR(200) NOT NULL,
+        [DeliveredQuantity] DECIMAL(18,2) NOT NULL DEFAULT 0,
+        [Unit] NVARCHAR(50) NOT NULL DEFAULT 'ks',
+        [ConsumptionPerPiece] DECIMAL(18,4) NOT NULL DEFAULT 1,
+        [MatchesTargetPieces] BIT NOT NULL DEFAULT 1,
+        [Note] NVARCHAR(MAX) NULL,
+        [ReceivedAt] DATETIME NOT NULL DEFAULT GETDATE(),
+        [CreatedBy] NVARCHAR(100) NULL
+    );
+END
+
+-- FÁZE 3: Výdej materiálu brigádníkům (MaterialDispatches)
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'kipa_MaterialDispatches' AND schema_id = SCHEMA_ID('Kipacky'))
+BEGIN
+    CREATE TABLE [Kipacky].[kipa_MaterialDispatches] (
+        [Id] INT IDENTITY(1,1) PRIMARY KEY,
+        [OrderId] INT NOT NULL,
+        [EmployeeId] INT NOT NULL,
+        [PlannedPieces] INT NOT NULL DEFAULT 0,
+        [DispatchedAt] DATETIME NOT NULL DEFAULT GETDATE(),
+        [DispatchedBy] NVARCHAR(100) NULL,
+        [DocumentId] INT NULL,
+        [Status] NVARCHAR(50) NOT NULL DEFAULT 'Issued',
+        [Note] NVARCHAR(MAX) NULL
+    );
+END
+
+-- FÁZE 3: Položky výdejky materiálu (MaterialDispatchItems)
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'kipa_MaterialDispatchItems' AND schema_id = SCHEMA_ID('Kipacky'))
+BEGIN
+    CREATE TABLE [Kipacky].[kipa_MaterialDispatchItems] (
+        [Id] INT IDENTITY(1,1) PRIMARY KEY,
+        [DispatchId] INT NOT NULL,
+        [MaterialId] INT NOT NULL,
+        [Quantity] DECIMAL(18,2) NOT NULL DEFAULT 0,
+        [ReturnedQuantity] DECIMAL(18,2) NOT NULL DEFAULT 0,
+        [Unit] NVARCHAR(50) NOT NULL DEFAULT 'ks'
+    );
+END
 ";
             using (var cmd = new SqlCommand(sql, conn))
             {
@@ -821,7 +900,7 @@ ORDER BY s.ShiftDate ASC, s.StartTime ASC";
 SELECT d.Id, d.Title, ISNULL(d.ShortText, d.Content) AS ShortText, ISNULL(d.FullText, '') AS FullText,
        (SELECT MAX(c.AgreedAt) FROM [Kipacky].[kipa_DocumentConsents] c WHERE c.EmployeeId = @empId AND c.DocumentId = d.Id) AS LastAgreedAt
 FROM [Kipacky].[kipa_Documents] d
-WHERE d.IsActive = 1
+WHERE d.IsActive = 1 AND (d.TargetEmployeeId IS NULL OR d.TargetEmployeeId = @empId)
 ORDER BY d.Id ASC";
             using (var cmd = new SqlCommand(docSql, conn))
             {
@@ -2661,6 +2740,442 @@ VALUES (@ord, @emp, @op, @pcs, GETDATE(), @dl, @wp, 'Active', @nt)", conn))
             {
                 cmd.Parameters.AddWithValue("@id", id);
                 cmd.ExecuteNonQuery();
+            }
+        }
+        SendJson(context, new Dictionary<string, object> { { "success", true } });
+    }
+
+    // ==========================================
+    // ADMIN: FÁZE 3 – SKLAD MATERIÁLU, PŘÍJEM & VÝDEJ
+    // ==========================================
+
+    private void HandleGetOrderMaterials(HttpContext context)
+    {
+        var list = new List<Dictionary<string, object>>();
+        string orderIdStr = context.Request.QueryString["orderId"];
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            EnsureSchemaMigrations(conn);
+            string sql = @"
+SELECT m.Id, m.OrderId, o.Name AS OrderName, ISNULL(o.TotalPiecesTarget, ISNULL(o.TargetPieces, 0)) AS TargetPieces,
+       m.Name, m.DeliveredQuantity, m.Unit, m.ConsumptionPerPiece, m.MatchesTargetPieces,
+       m.Note, m.ReceivedAt, m.CreatedBy,
+       ISNULL((SELECT SUM(mdi.Quantity) FROM [Kipacky].[kipa_MaterialDispatchItems] mdi WHERE mdi.MaterialId = m.Id), 0) AS DispatchedQuantity
+FROM [Kipacky].[kipa_OrderMaterials] m
+JOIN [Kipacky].[kipa_Orders] o ON m.OrderId = o.Id
+" + (!string.IsNullOrEmpty(orderIdStr) ? "WHERE m.OrderId = @ord " : "") + @"
+ORDER BY o.Id DESC, m.Id ASC";
+
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                if (!string.IsNullOrEmpty(orderIdStr))
+                {
+                    cmd.Parameters.AddWithValue("@ord", Convert.ToInt32(orderIdStr));
+                }
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        decimal delivered = reader.GetDecimal(5);
+                        decimal dispatched = Convert.ToDecimal(reader.GetValue(12));
+                        decimal remaining = delivered - dispatched;
+                        list.Add(new Dictionary<string, object>
+                        {
+                            { "id", reader.GetInt32(0) },
+                            { "orderId", reader.GetInt32(1) },
+                            { "orderName", reader.GetString(2) },
+                            { "targetPieces", reader.GetInt32(3) },
+                            { "name", reader.GetString(4) },
+                            { "deliveredQuantity", Convert.ToDouble(delivered) },
+                            { "unit", reader.GetString(6) },
+                            { "consumptionPerPiece", Convert.ToDouble(reader.GetDecimal(7)) },
+                            { "matchesTargetPieces", reader.GetBoolean(8) },
+                            { "note", reader.IsDBNull(9) ? "" : reader.GetString(9) },
+                            { "receivedAt", reader.GetDateTime(10).ToString("yyyy-MM-dd HH:mm") },
+                            { "createdBy", reader.IsDBNull(11) ? "" : reader.GetString(11) },
+                            { "dispatchedQuantity", Convert.ToDouble(dispatched) },
+                            { "remainingQuantity", Convert.ToDouble(remaining) }
+                        });
+                    }
+                }
+            }
+        }
+        SendJson(context, list);
+    }
+
+    private void HandleSaveOrderMaterial(HttpContext context)
+    {
+        var data = ReadJsonBody(context);
+        int id = data.ContainsKey("id") ? Convert.ToInt32(data["id"]) : 0;
+        int orderId = data.ContainsKey("orderId") ? Convert.ToInt32(data["orderId"]) : 0;
+        string name = data.ContainsKey("name") ? Convert.ToString(data["name"]).Trim() : "";
+        decimal delivered = data.ContainsKey("deliveredQuantity") ? Convert.ToDecimal(data["deliveredQuantity"], CultureInfo.InvariantCulture) : 0m;
+        string unit = data.ContainsKey("unit") ? Convert.ToString(data["unit"]).Trim() : "ks";
+        decimal consumption = data.ContainsKey("consumptionPerPiece") ? Convert.ToDecimal(data["consumptionPerPiece"], CultureInfo.InvariantCulture) : 1m;
+        bool matches = data.ContainsKey("matchesTargetPieces") ? Convert.ToBoolean(data["matchesTargetPieces"]) : true;
+        string note = data.ContainsKey("note") ? Convert.ToString(data["note"]).Trim() : "";
+        string receivedAtStr = data.ContainsKey("receivedAt") ? Convert.ToString(data["receivedAt"]) : null;
+        DateTime dtParsed;
+        DateTime receivedAt = (!string.IsNullOrEmpty(receivedAtStr) && DateTime.TryParse(receivedAtStr, out dtParsed)) ? dtParsed : DateTime.Now;
+        string createdBy = data.ContainsKey("createdBy") ? Convert.ToString(data["createdBy"]).Trim() : "Admin";
+
+        if (orderId <= 0 || string.IsNullOrWhiteSpace(name))
+        {
+            SendError(context, 400, "Je nutné vybrat zakázku a zadat název materiálu.");
+            return;
+        }
+
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            EnsureSchemaMigrations(conn);
+            if (id > 0)
+            {
+                using (var cmd = new SqlCommand(@"
+UPDATE [Kipacky].[kipa_OrderMaterials]
+SET OrderId = @ord, Name = @n, DeliveredQuantity = @del, Unit = @u, ConsumptionPerPiece = @cons,
+    MatchesTargetPieces = @mat, Note = @nt, ReceivedAt = @rec
+WHERE Id = @id", conn))
+                {
+                    cmd.Parameters.AddWithValue("@id", id);
+                    cmd.Parameters.AddWithValue("@ord", orderId);
+                    cmd.Parameters.AddWithValue("@n", name);
+                    cmd.Parameters.AddWithValue("@del", delivered);
+                    cmd.Parameters.AddWithValue("@u", unit);
+                    cmd.Parameters.AddWithValue("@cons", consumption);
+                    cmd.Parameters.AddWithValue("@mat", matches);
+                    cmd.Parameters.AddWithValue("@nt", string.IsNullOrEmpty(note) ? (object)DBNull.Value : note);
+                    cmd.Parameters.AddWithValue("@rec", receivedAt);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            else
+            {
+                using (var cmd = new SqlCommand(@"
+INSERT INTO [Kipacky].[kipa_OrderMaterials] (OrderId, Name, DeliveredQuantity, Unit, ConsumptionPerPiece, MatchesTargetPieces, Note, ReceivedAt, CreatedBy)
+VALUES (@ord, @n, @del, @u, @cons, @mat, @nt, @rec, @by)", conn))
+                {
+                    cmd.Parameters.AddWithValue("@ord", orderId);
+                    cmd.Parameters.AddWithValue("@n", name);
+                    cmd.Parameters.AddWithValue("@del", delivered);
+                    cmd.Parameters.AddWithValue("@u", unit);
+                    cmd.Parameters.AddWithValue("@cons", consumption);
+                    cmd.Parameters.AddWithValue("@mat", matches);
+                    cmd.Parameters.AddWithValue("@nt", string.IsNullOrEmpty(note) ? (object)DBNull.Value : note);
+                    cmd.Parameters.AddWithValue("@rec", receivedAt);
+                    cmd.Parameters.AddWithValue("@by", string.IsNullOrEmpty(createdBy) ? "Admin" : createdBy);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+        SendJson(context, new Dictionary<string, object> { { "success", true } });
+    }
+
+    private void HandleDeleteOrderMaterial(HttpContext context)
+    {
+        int id = Convert.ToInt32(context.Request.QueryString["id"]);
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            using (var cmd = new SqlCommand("DELETE FROM [Kipacky].[kipa_MaterialDispatchItems] WHERE MaterialId = @id; DELETE FROM [Kipacky].[kipa_OrderMaterials] WHERE Id = @id", conn))
+            {
+                cmd.Parameters.AddWithValue("@id", id);
+                cmd.ExecuteNonQuery();
+            }
+        }
+        SendJson(context, new Dictionary<string, object> { { "success", true } });
+    }
+
+    private void HandleGetMaterialDispatches(HttpContext context)
+    {
+        var list = new List<Dictionary<string, object>>();
+        string orderIdStr = context.Request.QueryString["orderId"];
+        string employeeIdStr = context.Request.QueryString["employeeId"];
+
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            EnsureSchemaMigrations(conn);
+
+            string sql = @"
+SELECT d.Id, d.OrderId, o.Name AS OrderName, d.EmployeeId, e.FullName AS EmployeeName, e.EmployeeNumber,
+       d.PlannedPieces, d.DispatchedAt, d.DispatchedBy, d.DocumentId, d.Status, d.Note,
+       (SELECT MAX(c.AgreedAt) FROM [Kipacky].[kipa_DocumentConsents] c WHERE c.DocumentId = d.DocumentId AND c.EmployeeId = d.EmployeeId) AS ConfirmedAt
+FROM [Kipacky].[kipa_MaterialDispatches] d
+JOIN [Kipacky].[kipa_Orders] o ON d.OrderId = o.Id
+JOIN [Kipacky].[kipa_Employees] e ON d.EmployeeId = e.Id
+WHERE 1=1 "
++ (!string.IsNullOrEmpty(orderIdStr) ? "AND d.OrderId = @ord " : "")
++ (!string.IsNullOrEmpty(employeeIdStr) ? "AND d.EmployeeId = @emp " : "") + @"
+ORDER BY d.Id DESC";
+
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                if (!string.IsNullOrEmpty(orderIdStr)) cmd.Parameters.AddWithValue("@ord", Convert.ToInt32(orderIdStr));
+                if (!string.IsNullOrEmpty(employeeIdStr)) cmd.Parameters.AddWithValue("@emp", Convert.ToInt32(employeeIdStr));
+
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        int dispatchId = reader.GetInt32(0);
+                        DateTime? confAt = reader.IsDBNull(12) ? (DateTime?)null : reader.GetDateTime(12);
+                        list.Add(new Dictionary<string, object>
+                        {
+                            { "id", dispatchId },
+                            { "orderId", reader.GetInt32(1) },
+                            { "orderName", reader.GetString(2) },
+                            { "employeeId", reader.GetInt32(3) },
+                            { "employeeName", reader.GetString(4) },
+                            { "employeeNumber", reader.IsDBNull(5) ? "" : reader.GetString(5) },
+                            { "plannedPieces", reader.GetInt32(6) },
+                            { "dispatchedAt", reader.GetDateTime(7).ToString("yyyy-MM-dd HH:mm") },
+                            { "dispatchedBy", reader.IsDBNull(8) ? "" : reader.GetString(8) },
+                            { "documentId", reader.IsDBNull(9) ? (int?)null : reader.GetInt32(9) },
+                            { "status", reader.GetString(10) },
+                            { "note", reader.IsDBNull(11) ? "" : reader.GetString(11) },
+                            { "confirmedAt", confAt.HasValue ? confAt.Value.ToString("yyyy-MM-dd HH:mm") : null },
+                            { "items", new List<Dictionary<string, object>>() }
+                        });
+                    }
+                }
+            }
+
+            foreach (var disp in list)
+            {
+                int dispId = (int)disp["id"];
+                var items = (List<Dictionary<string, object>>)disp["items"];
+                using (var cmdItems = new SqlCommand(@"
+SELECT i.Id, i.MaterialId, m.Name AS MaterialName, i.Quantity, i.ReturnedQuantity, i.Unit
+FROM [Kipacky].[kipa_MaterialDispatchItems] i
+JOIN [Kipacky].[kipa_OrderMaterials] m ON i.MaterialId = m.Id
+WHERE i.DispatchId = @did", conn))
+                {
+                    cmdItems.Parameters.AddWithValue("@did", dispId);
+                    using (var r = cmdItems.ExecuteReader())
+                    {
+                        while (r.Read())
+                        {
+                            items.Add(new Dictionary<string, object>
+                            {
+                                { "id", r.GetInt32(0) },
+                                { "materialId", r.GetInt32(1) },
+                                { "materialName", r.GetString(2) },
+                                { "quantity", Convert.ToDouble(r.GetDecimal(3)) },
+                                { "returnedQuantity", Convert.ToDouble(r.GetDecimal(4)) },
+                                { "unit", r.GetString(5) }
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        SendJson(context, list);
+    }
+
+    private void HandleSaveMaterialDispatch(HttpContext context)
+    {
+        var data = ReadJsonBody(context);
+        int id = data.ContainsKey("id") ? Convert.ToInt32(data["id"]) : 0;
+        int orderId = data.ContainsKey("orderId") ? Convert.ToInt32(data["orderId"]) : 0;
+        int employeeId = data.ContainsKey("employeeId") ? Convert.ToInt32(data["employeeId"]) : 0;
+        int plannedPieces = data.ContainsKey("plannedPieces") ? Convert.ToInt32(data["plannedPieces"]) : 0;
+        string dispatchedBy = data.ContainsKey("dispatchedBy") ? Convert.ToString(data["dispatchedBy"]).Trim() : "Admin";
+        string note = data.ContainsKey("note") ? Convert.ToString(data["note"]).Trim() : "";
+        string status = data.ContainsKey("status") ? Convert.ToString(data["status"]).Trim() : "Issued";
+        bool createDoc = data.ContainsKey("createDocument") && Convert.ToBoolean(data["createDocument"]);
+
+        if (orderId <= 0 || employeeId <= 0 || plannedPieces <= 0)
+        {
+            SendError(context, 400, "Je nutné zvolit zakázku, brigádníka a zadat plánovaný počet kusů.");
+            return;
+        }
+
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            EnsureSchemaMigrations(conn);
+
+            // Fetch order and employee info for naming
+            string orderName = "Zakázka";
+            using (var cmdOrd = new SqlCommand("SELECT Name FROM [Kipacky].[kipa_Orders] WHERE Id = @oid", conn))
+            {
+                cmdOrd.Parameters.AddWithValue("@oid", orderId);
+                var oRes = cmdOrd.ExecuteScalar();
+                if (oRes != null) orderName = Convert.ToString(oRes);
+            }
+
+            string employeeName = "Brigádník";
+            string employeeNumber = "";
+            using (var cmdEmp = new SqlCommand("SELECT FullName, EmployeeNumber FROM [Kipacky].[kipa_Employees] WHERE Id = @eid", conn))
+            {
+                cmdEmp.Parameters.AddWithValue("@eid", employeeId);
+                using (var r = cmdEmp.ExecuteReader())
+                {
+                    if (r.Read())
+                    {
+                        employeeName = r.GetString(0);
+                        employeeNumber = r.IsDBNull(1) ? "" : r.GetString(1);
+                    }
+                }
+            }
+
+            int dispatchId = id;
+            if (id > 0)
+            {
+                using (var cmd = new SqlCommand(@"
+UPDATE [Kipacky].[kipa_MaterialDispatches]
+SET OrderId = @ord, EmployeeId = @emp, PlannedPieces = @pcs, DispatchedBy = @by, Status = @st, Note = @nt
+WHERE Id = @id", conn))
+                {
+                    cmd.Parameters.AddWithValue("@id", id);
+                    cmd.Parameters.AddWithValue("@ord", orderId);
+                    cmd.Parameters.AddWithValue("@emp", employeeId);
+                    cmd.Parameters.AddWithValue("@pcs", plannedPieces);
+                    cmd.Parameters.AddWithValue("@by", dispatchedBy);
+                    cmd.Parameters.AddWithValue("@st", status);
+                    cmd.Parameters.AddWithValue("@nt", string.IsNullOrEmpty(note) ? (object)DBNull.Value : note);
+                    cmd.ExecuteNonQuery();
+                }
+
+                using (var cmdDelItems = new SqlCommand("DELETE FROM [Kipacky].[kipa_MaterialDispatchItems] WHERE DispatchId = @did", conn))
+                {
+                    cmdDelItems.Parameters.AddWithValue("@did", id);
+                    cmdDelItems.ExecuteNonQuery();
+                }
+            }
+            else
+            {
+                using (var cmd = new SqlCommand(@"
+INSERT INTO [Kipacky].[kipa_MaterialDispatches] (OrderId, EmployeeId, PlannedPieces, DispatchedAt, DispatchedBy, Status, Note)
+VALUES (@ord, @emp, @pcs, GETDATE(), @by, @st, @nt);
+SELECT SCOPE_IDENTITY();", conn))
+                {
+                    cmd.Parameters.AddWithValue("@ord", orderId);
+                    cmd.Parameters.AddWithValue("@emp", employeeId);
+                    cmd.Parameters.AddWithValue("@pcs", plannedPieces);
+                    cmd.Parameters.AddWithValue("@by", dispatchedBy);
+                    cmd.Parameters.AddWithValue("@st", status);
+                    cmd.Parameters.AddWithValue("@nt", string.IsNullOrEmpty(note) ? (object)DBNull.Value : note);
+                    dispatchId = Convert.ToInt32(cmd.ExecuteScalar());
+                }
+            }
+
+            // Insert items
+            var itemDescriptions = new List<string>();
+            var htmlRows = new StringBuilder();
+
+            var rawItems = data.ContainsKey("items") ? (data["items"] as System.Collections.IEnumerable) : null;
+            if (rawItems != null)
+            {
+                foreach (var itemObj in rawItems)
+                {
+                    var itm = itemObj as Dictionary<string, object>;
+                    if (itm != null)
+                    {
+                        int matId = Convert.ToInt32(itm["materialId"]);
+                        decimal qty = Convert.ToDecimal(itm["quantity"], CultureInfo.InvariantCulture);
+                        string unit = itm.ContainsKey("unit") ? Convert.ToString(itm["unit"]).Trim() : "ks";
+                        string matName = itm.ContainsKey("materialName") ? Convert.ToString(itm["materialName"]).Trim() : "";
+
+                        using (var cmdItm = new SqlCommand(@"
+INSERT INTO [Kipacky].[kipa_MaterialDispatchItems] (DispatchId, MaterialId, Quantity, Unit)
+VALUES (@did, @mid, @qty, @u)", conn))
+                        {
+                            cmdItm.Parameters.AddWithValue("@did", dispatchId);
+                            cmdItm.Parameters.AddWithValue("@mid", matId);
+                            cmdItm.Parameters.AddWithValue("@qty", qty);
+                            cmdItm.Parameters.AddWithValue("@u", unit);
+                            cmdItm.ExecuteNonQuery();
+                        }
+
+                        itemDescriptions.Add(matName + ": " + qty.ToString() + " " + unit);
+                        htmlRows.Append("<tr><td>" + matName + "</td><td align=\"right\"><strong>" + qty.ToString() + "</strong></td><td>" + unit + "</td></tr>");
+                    }
+                }
+            }
+
+            // If createDocument requested, generate a document in kipa_Documents
+            if (createDoc)
+            {
+                string title = "Předávací protokol materiálu č. VYD-" + dispatchId + " – " + orderName;
+                string shortText = "Materiál na " + plannedPieces + " ks zakázky '" + orderName + "'. Vydáno: " + string.Join(", ", itemDescriptions) + ". Prosíme o potvrzení převzetí.";
+                string fullText = @"<div style=""font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937;"">
+<h2 style=""color: #065f46; margin-bottom: 4px;"">PŘEDÁVACÍ PROTOKOL MATERIÁLU K ZAKÁZCE</h2>
+<p style=""margin-top: 0; color: #6b7280; font-size: 14px;"">Číslo výdejky: <strong>VYD-" + dispatchId + @"</strong></p>
+<table style=""width: 100%; margin-bottom: 16px; border-collapse: collapse;"">
+<tr><td style=""width: 160px; padding: 4px 0; color: #4b5563;""><strong>Zakázka:</strong></td><td><strong>" + orderName + @"</strong></td></tr>
+<tr><td style=""padding: 4px 0; color: #4b5563;""><strong>Příjemce (brigádník):</strong></td><td>" + employeeName + (string.IsNullOrEmpty(employeeNumber) ? "" : (" (os. č. " + employeeNumber + ")")) + @"</td></tr>
+<tr><td style=""padding: 4px 0; color: #4b5563;""><strong>Předal koordinátor:</strong></td><td>" + dispatchedBy + @"</td></tr>
+<tr><td style=""padding: 4px 0; color: #4b5563;""><strong>Datum předání:</strong></td><td>" + DateTime.Now.ToString("dd. MM. yyyy HH:mm") + @"</td></tr>
+<tr><td style=""padding: 4px 0; color: #4b5563;""><strong>Závazek ke zhotovení:</strong></td><td><strong>" + plannedPieces + @" ks</strong></td></tr>
+" + (string.IsNullOrEmpty(note) ? "" : ("<tr><td style=\"padding: 4px 0; color: #4b5563;\"><strong>Poznámka:</strong></td><td>" + note + "</td></tr>")) + @"
+</table>
+<h3 style=""color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 6px;"">Soupis předaného materiálu a komponent</h3>
+<table border=""1"" cellpadding=""8"" cellspacing=""0"" style=""width: 100%; border-collapse: collapse; border-color: #d1d5db;"">
+<thead><tr style=""background: #f3f4f6; color: #374151;""><th align=""left"">Materiál / komponenta</th><th align=""right"">Vydané množství</th><th align=""left"">Měrná jednotka</th></tr></thead>
+<tbody>" + htmlRows.ToString() + @"</tbody>
+</table>
+<div style=""margin-top: 24px; padding: 12px; background: #ecfdf5; border-left: 4px solid #059669; font-size: 13px; color: #065f46;"">
+<strong>Čestné prohlášení:</strong> Svým elektronickým potvrzením potvrzuji fyzické převzetí výše uvedeného materiálu v deklarovaném množství a bez zjevných vad. Zavazuji se materiál využít výhradně pro kompletaci zakázky, chránit jej před poškozením a zbylé či vadné kusy vrátit koordinátorovi.
+</div>
+</div>";
+
+                int docId = 0;
+                using (var cmdDoc = new SqlCommand(@"
+INSERT INTO [Kipacky].[kipa_Documents] (Title, Content, ShortText, FullText, IsActive, TargetEmployeeId, DocumentType)
+VALUES (@t, @s, @s, @f, 1, @emp, 'MaterialHandover');
+SELECT SCOPE_IDENTITY();", conn))
+                {
+                    cmdDoc.Parameters.AddWithValue("@t", title);
+                    cmdDoc.Parameters.AddWithValue("@s", shortText);
+                    cmdDoc.Parameters.AddWithValue("@f", fullText);
+                    cmdDoc.Parameters.AddWithValue("@emp", employeeId);
+                    docId = Convert.ToInt32(cmdDoc.ExecuteScalar());
+                }
+
+                using (var cmdUpdDisp = new SqlCommand("UPDATE [Kipacky].[kipa_MaterialDispatches] SET DocumentId = @docId WHERE Id = @id", conn))
+                {
+                    cmdUpdDisp.Parameters.AddWithValue("@docId", docId);
+                    cmdUpdDisp.Parameters.AddWithValue("@id", dispatchId);
+                    cmdUpdDisp.ExecuteNonQuery();
+                }
+            }
+        }
+
+        SendJson(context, new Dictionary<string, object> { { "success", true } });
+    }
+
+    private void HandleDeleteMaterialDispatch(HttpContext context)
+    {
+        int id = Convert.ToInt32(context.Request.QueryString["id"]);
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            int? docId = null;
+            using (var cmdChk = new SqlCommand("SELECT DocumentId FROM [Kipacky].[kipa_MaterialDispatches] WHERE Id = @id", conn))
+            {
+                cmdChk.Parameters.AddWithValue("@id", id);
+                var res = cmdChk.ExecuteScalar();
+                if (res != null && res != DBNull.Value) docId = Convert.ToInt32(res);
+            }
+
+            using (var cmd = new SqlCommand(@"
+DELETE FROM [Kipacky].[kipa_MaterialDispatchItems] WHERE DispatchId = @id;
+DELETE FROM [Kipacky].[kipa_MaterialDispatches] WHERE Id = @id;", conn))
+            {
+                cmd.Parameters.AddWithValue("@id", id);
+                cmd.ExecuteNonQuery();
+            }
+
+            if (docId.HasValue)
+            {
+                using (var cmdDoc = new SqlCommand("UPDATE [Kipacky].[kipa_Documents] SET IsActive = 0 WHERE Id = @docId", conn))
+                {
+                    cmdDoc.Parameters.AddWithValue("@docId", docId.Value);
+                    cmdDoc.ExecuteNonQuery();
+                }
             }
         }
         SendJson(context, new Dictionary<string, object> { { "success", true } });

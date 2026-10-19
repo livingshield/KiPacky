@@ -35,9 +35,12 @@ import {
   Check,
   Trash2,
   Settings,
-  FolderOpen
+  FolderOpen,
+  Send,
+  Boxes,
+  FileCheck
 } from 'lucide-react';
-import { Employee, OrderItem, OperationItem, OrderAssignmentItem, OrderDetailResult } from '../types';
+import { Employee, OrderItem, OperationItem, OrderAssignmentItem, OrderDetailResult, OrderMaterialItem, MaterialDispatchItem } from '../types';
 import {
   fetchEmployees,
   createEmployee,
@@ -49,7 +52,13 @@ import {
   fetchOrderAssignments,
   saveOrderAssignment,
   deleteOrderAssignment,
-  fetchOrderDetail
+  fetchOrderDetail,
+  fetchOrderMaterials,
+  saveOrderMaterial,
+  deleteOrderMaterial,
+  fetchMaterialDispatches,
+  saveMaterialDispatch,
+  deleteMaterialDispatch
 } from '../api/client';
 import { GREENBERG_LOGO } from '../assets/logoBase64';
 import { APP_VERSION } from '../version';
@@ -139,6 +148,37 @@ export const AdminV2Page: React.FC<AdminV2PageProps> = ({ onLogout, onGoToKiosk,
   const [orderSheetDetail, setOrderSheetDetail] = useState<OrderDetailResult | null>(null);
   const [loadingOrderSheet, setLoadingOrderSheet] = useState(false);
 
+  // FÁZE 3: Sklad materiálu & Výdejky
+  const [materials, setMaterials] = useState<OrderMaterialItem[]>([]);
+  const [dispatches, setDispatches] = useState<MaterialDispatchItem[]>([]);
+  const [loadingMaterials, setLoadingMaterials] = useState(false);
+  const [inventorySubTab, setInventorySubTab] = useState<'stock' | 'dispatches'>('stock');
+  const [selectedMaterialOrderId, setSelectedMaterialOrderId] = useState<string>('all');
+  const [openMaterialForm, setOpenMaterialForm] = useState<'none' | 'receive' | 'dispatch'>('none');
+
+  // Formulář 1: Příjem materiálu k zakázce
+  const [matOrderId, setMatOrderId] = useState<string>('');
+  const [matName, setMatName] = useState('');
+  const [matDeliveredQty, setMatDeliveredQty] = useState<number>(1000);
+  const [matUnit, setMatUnit] = useState('ks');
+  const [matConsumption, setMatConsumption] = useState<number>(1);
+  const [matMatchesTarget, setMatMatchesTarget] = useState<boolean>(true);
+  const [matNote, setMatNote] = useState('');
+  const [matReceivedAt, setMatReceivedAt] = useState<string>(new Date().toISOString().substring(0, 10));
+
+  // Formulář 2: Výdej materiálu brigádníkovi
+  const [dispOrderId, setDispOrderId] = useState<string>('');
+  const [dispEmployeeId, setDispEmployeeId] = useState<string>('');
+  const [dispPlannedPieces, setDispPlannedPieces] = useState<number>(200);
+  const [dispDispatchedBy, setDispDispatchedBy] = useState<string>('Admin');
+  const [dispNote, setDispNote] = useState('');
+  const [dispCreateDoc, setDispCreateDoc] = useState<boolean>(true);
+  const [dispCustomQuantities, setDispCustomQuantities] = useState<Record<number, number>>({});
+
+  // Modály pro tisk A4 sestav:
+  const [selectedPrintReceiptOrder, setSelectedPrintReceiptOrder] = useState<OrderItem | null>(null);
+  const [selectedPrintDispatch, setSelectedPrintDispatch] = useState<MaterialDispatchItem | null>(null);
+
   // Notifikace / zpětná vazba
   const [statusMsg, setStatusMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
@@ -156,22 +196,28 @@ export const AdminV2Page: React.FC<AdminV2PageProps> = ({ onLogout, onGoToKiosk,
   const loadData = async () => {
     setLoadingEmployees(true);
     setLoadingOrders(true);
+    setLoadingMaterials(true);
     try {
-      const [empData, ordData, opData, assignData] = await Promise.all([
+      const [empData, ordData, opData, assignData, matData, dispData] = await Promise.all([
         fetchEmployees().catch(() => []),
         fetchOrders().catch(() => []),
         fetchOperations().catch(() => []),
-        fetchOrderAssignments().catch(() => [])
+        fetchOrderAssignments().catch(() => []),
+        fetchOrderMaterials().catch(() => []),
+        fetchMaterialDispatches().catch(() => [])
       ]);
       setEmployees(empData);
       setOrders(ordData);
       setOperations(opData);
       setOrderAssignments(assignData);
+      setMaterials(matData);
+      setDispatches(dispData);
     } catch {
       showNotification('Nepodařilo se načíst data ze serveru', 'error');
     } finally {
       setLoadingEmployees(false);
       setLoadingOrders(false);
+      setLoadingMaterials(false);
     }
   };
 
@@ -329,6 +375,114 @@ export const AdminV2Page: React.FC<AdminV2PageProps> = ({ onLogout, onGoToKiosk,
       showNotification('Přiřazení bylo odebráno.');
     } catch (err: any) {
       showNotification(err.message || 'Chyba při odebírání přiřazení', 'error');
+    }
+  };
+
+  // FÁZE 3: Uložení příjmu materiálu k zakázce
+  const handleSaveMaterialSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!matOrderId || !matName.trim()) {
+      showNotification('Vyberte prosím zakázku a zadejte název materiálu', 'error');
+      return;
+    }
+    try {
+      await saveOrderMaterial({
+        orderId: parseInt(matOrderId, 10),
+        name: matName.trim(),
+        deliveredQuantity: matDeliveredQty,
+        unit: matUnit.trim(),
+        consumptionPerPiece: matConsumption,
+        matchesTargetPieces: matMatchesTarget,
+        note: matNote.trim(),
+        receivedAt: matReceivedAt
+      });
+      showNotification(`Materiál "${matName}" byl úspěšně zaevidován do skladu.`);
+      setOpenMaterialForm('none');
+      setMatName('');
+      setMatDeliveredQty(1000);
+      setMatConsumption(1);
+      setMatMatchesTarget(true);
+      setMatNote('');
+      loadData();
+    } catch (err: any) {
+      showNotification(err.message || 'Chyba při ukládání materiálu', 'error');
+    }
+  };
+
+  // Smazání materiálu
+  const handleDeleteMaterial = async (id: number) => {
+    if (!window.confirm('Opravdu chcete smazat tento materiál ze skladu? Smažou se i vazby ve výdejkách.')) return;
+    try {
+      await deleteOrderMaterial(id);
+      showNotification('Materiál byl smazán.');
+      loadData();
+    } catch (err: any) {
+      showNotification(err.message || 'Chyba při mazání materiálu', 'error');
+    }
+  };
+
+  // FÁZE 3: Uložení výdejky materiálu brigádníkovi
+  const handleSaveDispatchSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dispOrderId || !dispEmployeeId || dispPlannedPieces <= 0) {
+      showNotification('Vyberte prosím zakázku, brigádníka a zadejte plánovaný počet kusů', 'error');
+      return;
+    }
+
+    const ordId = parseInt(dispOrderId, 10);
+    const empId = parseInt(dispEmployeeId, 10);
+    const orderMats = materials.filter(m => m.orderId === ordId);
+
+    if (orderMats.length === 0) {
+      showNotification('Vybraná zakázka nemá v systému naskladněný žádný materiál. Nejprve proveďte příjem materiálu.', 'error');
+      return;
+    }
+
+    // Připravit položky k výdeji
+    const items = orderMats.map(m => {
+      const customQty = dispCustomQuantities[m.id];
+      const qty = (customQty !== undefined && customQty >= 0) ? customQty : (dispPlannedPieces * m.consumptionPerPiece);
+      return {
+        materialId: m.id,
+        materialName: m.name,
+        quantity: qty,
+        unit: m.unit
+      };
+    });
+
+    try {
+      await saveMaterialDispatch({
+        orderId: ordId,
+        employeeId: empId,
+        plannedPieces: dispPlannedPieces,
+        dispatchedBy: dispDispatchedBy.trim() || 'Admin',
+        note: dispNote.trim(),
+        createDocument: dispCreateDoc,
+        items
+      });
+
+      showNotification(`Výdejka pro brigádníka na ${dispPlannedPieces} ks byla úspěšně vystavena${dispCreateDoc ? ' a odeslána k elektronickému potvrzení do jeho profilu' : ''}.`);
+      setOpenMaterialForm('none');
+      setDispOrderId('');
+      setDispEmployeeId('');
+      setDispPlannedPieces(200);
+      setDispNote('');
+      setDispCustomQuantities({});
+      loadData();
+    } catch (err: any) {
+      showNotification(err.message || 'Chyba při vystavování výdejky', 'error');
+    }
+  };
+
+  // Smazání výdejky
+  const handleDeleteDispatch = async (id: number) => {
+    if (!window.confirm('Opravdu chcete smazat tuto výdejku materiálu? Vrátí se naskladněný stav a zruší se případný předávací protokol.')) return;
+    try {
+      await deleteMaterialDispatch(id);
+      showNotification('Výdejka byla smazána.');
+      loadData();
+    } catch (err: any) {
+      showNotification(err.message || 'Chyba při mazání výdejky', 'error');
     }
   };
 
@@ -2121,13 +2275,1115 @@ export const AdminV2Page: React.FC<AdminV2PageProps> = ({ onLogout, onGoToKiosk,
           </div>
         )}
 
+        {/* FÁZE 3: SKLAD MATERIÁLU (PŘÍJEM OD ZÁKAZNÍKA, VÝDEJ BRIGÁDNÍKŮM & PŘEBÍRACÍ/PŘEDÁVACÍ PROTOKOLY) */}
         {activeTab === 'inventory' && (
-          <div className="bg-white/95 border border-stone-300 rounded-2xl p-8 text-center space-y-3">
-            <Layers className="w-12 h-12 text-emerald-600 mx-auto" />
-            <h3 className="font-heading font-bold text-xl text-[#193F34]">Fáze 3: Sklad materiálu</h3>
-            <p className="text-sm text-stone-600 max-w-lg mx-auto">
-              Evidence komponent k zakázkám (výseky, magnetky, pásky), propočet spotřeby na kus a výdejky brigádníkům ke schválení.
-            </p>
+          <div className="space-y-6">
+            {/* Horní řada: Tlačítka sbalených formulářů + Filtr zakázky + Přepínač pohledů */}
+            <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
+              {/* Tlačítka pro rozbalení 2 formulářů */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOpenMaterialForm(openMaterialForm === 'receive' ? 'none' : 'receive')}
+                  className={`px-4 py-2.5 rounded-xl font-heading font-bold text-sm flex items-center gap-2 transition-all shadow-sm cursor-pointer ${
+                    openMaterialForm === 'receive'
+                      ? 'bg-[#193F34] text-[#F7F3E9] ring-2 ring-[#D7BE97]'
+                      : 'bg-[#D7BE97] text-[#193F34] hover:bg-[#c9b28a]'
+                  }`}
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>1. Příjem materiálu od zákazníka</span>
+                  {openMaterialForm === 'receive' ? <ChevronUp className="w-4 h-4 ml-1" /> : <ChevronDown className="w-4 h-4 ml-1" />}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setOpenMaterialForm(openMaterialForm === 'dispatch' ? 'none' : 'dispatch')}
+                  className={`px-4 py-2.5 rounded-xl font-heading font-bold text-sm flex items-center gap-2 transition-all shadow-sm cursor-pointer ${
+                    openMaterialForm === 'dispatch'
+                      ? 'bg-[#193F34] text-[#F7F3E9] ring-2 ring-[#D7BE97]'
+                      : 'bg-white border-2 border-[#193F34] text-[#193F34] hover:bg-stone-50'
+                  }`}
+                >
+                  <Send className="w-4 h-4 text-emerald-700" />
+                  <span>2. Výdej materiálu brigádníkovi</span>
+                  {openMaterialForm === 'dispatch' ? <ChevronUp className="w-4 h-4 ml-1" /> : <ChevronDown className="w-4 h-4 ml-1" />}
+                </button>
+              </div>
+
+              {/* Přepínač: Stav zásob vs Historie výdejek + Filtr zakázky */}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-stone-600 uppercase">Zakázka:</span>
+                  <select
+                    value={selectedMaterialOrderId}
+                    onChange={(e) => setSelectedMaterialOrderId(e.target.value)}
+                    className="px-3 py-1.5 bg-white border border-stone-300 rounded-lg text-xs font-medium text-stone-800 shadow-sm focus:ring-2 focus:ring-[#193F34]"
+                  >
+                    <option value="all">📦 Všechny zakázky (celý sklad)</option>
+                    {orders.map(o => (
+                      <option key={o.id} value={o.id.toString()}>{o.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="inline-flex bg-stone-200 p-1 rounded-xl shadow-inner">
+                  <button
+                    type="button"
+                    onClick={() => setInventorySubTab('stock')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      inventorySubTab === 'stock'
+                        ? 'bg-white text-[#193F34] shadow-sm'
+                        : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    Stav zásob materiálu ({materials.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInventorySubTab('dispatches')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      inventorySubTab === 'dispatches'
+                        ? 'bg-white text-[#193F34] shadow-sm'
+                        : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    Výdejky brigádníkům ({dispatches.length})
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* SBALENÝ FORMULÁŘ 1: Příjem materiálu od zákazníka */}
+            {openMaterialForm === 'receive' && (
+              <div className="bg-white/95 border-2 border-[#D7BE97] rounded-2xl p-6 shadow-xl space-y-5 animate-fadeIn">
+                <div className="flex items-center justify-between border-b border-stone-200 pb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center text-amber-800 font-bold">
+                      📦
+                    </div>
+                    <div>
+                      <h3 className="font-heading font-bold text-lg text-[#193F34]">Příjem materiálu od zákazníka k projektu</h3>
+                      <p className="text-xs text-stone-500">Přiřazení dodaných komponent a surovin k zakázce s kontrolou pokrytí cílového počtu kusů</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setOpenMaterialForm('none')}
+                    className="text-stone-400 hover:text-stone-600 p-1 rounded-lg cursor-pointer"
+                  >
+                    <XCircle className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveMaterialSubmit} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Výběr zakázky */}
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                        Přiřadit k zakázce *
+                      </label>
+                      <select
+                        value={matOrderId}
+                        onChange={(e) => {
+                          setMatOrderId(e.target.value);
+                          const ord = orders.find(o => o.id === parseInt(e.target.value, 10));
+                          if (ord && ord.totalPiecesTarget > 0) {
+                            setMatDeliveredQty(ord.totalPiecesTarget * matConsumption);
+                          }
+                        }}
+                        required
+                        className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-sm font-bold text-[#193F34] focus:ring-2 focus:ring-[#193F34]"
+                      >
+                        <option value="">-- Vyberte zakázku --</option>
+                        {orders.map(o => (
+                          <option key={o.id} value={o.id.toString()}>
+                            {o.name} {o.totalPiecesTarget > 0 ? `(Cíl: ${o.totalPiecesTarget} ks)` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {matOrderId && (() => {
+                        const ord = orders.find(o => o.id === parseInt(matOrderId, 10));
+                        if (!ord) return null;
+                        return (
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-stone-600">
+                            <span>Plánovaný cíl: <strong className="font-mono text-[#193F34]">{ord.totalPiecesTarget} ks</strong></span>
+                            {ord.customerContact && <span>| Zákazník: <strong>{ord.customerContact}</strong></span>}
+                            {ord.deadline && <span>| Termín expedice: <strong className="font-mono">{ord.deadline}</strong></span>}
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Datum příjmu */}
+                    <div>
+                      <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                        Datum převzetí
+                      </label>
+                      <input
+                        type="date"
+                        value={matReceivedAt}
+                        onChange={(e) => setMatReceivedAt(e.target.value)}
+                        className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-sm focus:ring-2 focus:ring-[#193F34]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    {/* Název komponenty */}
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                        Název materiálu / komponenty *
+                      </label>
+                      <input
+                        type="text"
+                        value={matName}
+                        onChange={(e) => setMatName(e.target.value)}
+                        placeholder="např. Vnější krabička s ražbou, Červená stuha 25mm, Brožurka..."
+                        required
+                        className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-sm focus:ring-2 focus:ring-[#193F34]"
+                      />
+                      {/* Rychlé štítky */}
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {['Krabice / obal', 'Výplň / vložka', 'Stuha / mašle', 'Brožura / manuál', 'Etiketa / přelep', 'Výsek'].map(tag => (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => setMatName(tag)}
+                            className="text-[10px] px-1.5 py-0.5 bg-stone-100 hover:bg-stone-200 text-stone-600 rounded cursor-pointer"
+                          >
+                            + {tag}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Dodané množství */}
+                    <div>
+                      <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                        Dodané množství *
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={matDeliveredQty}
+                        onChange={(e) => setMatDeliveredQty(parseFloat(e.target.value) || 0)}
+                        required
+                        className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-sm font-mono font-bold focus:ring-2 focus:ring-[#193F34]"
+                      />
+                    </div>
+
+                    {/* Měrná jednotka */}
+                    <div>
+                      <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                        Měrná jednotka
+                      </label>
+                      <select
+                        value={matUnit}
+                        onChange={(e) => setMatUnit(e.target.value)}
+                        className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-sm focus:ring-2 focus:ring-[#193F34]"
+                      >
+                        <option value="ks">ks (kusy)</option>
+                        <option value="m">m (metry)</option>
+                        <option value="kg">kg (kilogramy)</option>
+                        <option value="arch">arch (archů)</option>
+                        <option value="balení">balení (bal.)</option>
+                        <option value="role">role</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-stone-50 p-4 rounded-xl border border-stone-200">
+                    {/* Spotřeba na 1 ks finálního výrobku */}
+                    <div>
+                      <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                        Spotřeba na 1 ks finálu *
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="0.0001"
+                          step="any"
+                          value={matConsumption}
+                          onChange={(e) => setMatConsumption(parseFloat(e.target.value) || 1)}
+                          required
+                          className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-sm font-mono font-bold focus:ring-2 focus:ring-[#193F34]"
+                        />
+                        <span className="text-xs font-bold text-stone-500">{matUnit} / ks</span>
+                      </div>
+                    </div>
+
+                    {/* Automatická kontrola pokrytí */}
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                        Kontrola shody s cílem zakázky
+                      </label>
+                      {(() => {
+                        const ord = orders.find(o => o.id === parseInt(matOrderId, 10));
+                        const targetPcs = ord ? ord.totalPiecesTarget : 0;
+                        const neededQty = targetPcs * matConsumption;
+                        const isCovered = targetPcs > 0 ? (matDeliveredQty >= neededQty) : true;
+                        return (
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-3">
+                              <label className="inline-flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={matMatchesTarget}
+                                  onChange={(e) => setMatMatchesTarget(e.target.checked)}
+                                  className="w-4 h-4 text-[#193F34] rounded focus:ring-[#193F34]"
+                                />
+                                <span className="text-xs font-medium text-stone-800">
+                                  Odpovídá počtu kusů (shoda s dodacím listem)
+                                </span>
+                              </label>
+                            </div>
+                            {targetPcs > 0 && (
+                              <div className={`text-xs p-2 rounded-lg flex items-center gap-2 ${
+                                isCovered ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-amber-50 text-amber-800 border border-amber-200'
+                              }`}>
+                                {isCovered ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />}
+                                <span>
+                                  Pro zakázku na <strong>{targetPcs} ks</strong> je při spotřebě {matConsumption} {matUnit}/ks potřeba <strong>{neededQty} {matUnit}</strong>.
+                                  {isCovered
+                                    ? ` Dodané množství plně pokrývá cíl (přebytek: +${(matDeliveredQty - neededQty).toFixed(1)} ${matUnit}).`
+                                    : ` Pozor: Dodáno je o ${(neededQty - matDeliveredQty).toFixed(1)} ${matUnit} méně, než je potřeba!`}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* Poznámka k příjmu */}
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                      Poznámka k příjmu (číslo dodacího listu, stav balení)
+                    </label>
+                    <input
+                      type="text"
+                      value={matNote}
+                      onChange={(e) => setMatNote(e.target.value)}
+                      placeholder="např. Dodací list č. 2026/099, paleta 1 z 2, bez zjevných vad..."
+                      className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-sm focus:ring-2 focus:ring-[#193F34]"
+                    />
+                  </div>
+
+                  {/* Akční tlačítka */}
+                  <div className="flex flex-wrap items-center justify-between pt-2 border-t border-stone-200 gap-3">
+                    <div className="text-xs text-stone-500">
+                      * Povinné položky pro evidenci skladu
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setOpenMaterialForm('none')}
+                        className="px-4 py-2 border border-stone-300 rounded-xl text-xs font-bold text-stone-700 hover:bg-stone-50 cursor-pointer"
+                      >
+                        Zrušit
+                      </button>
+                      {matOrderId && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const ord = orders.find(o => o.id === parseInt(matOrderId, 10));
+                            if (ord) setSelectedPrintReceiptOrder(ord);
+                          }}
+                          className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Printer className="w-4 h-4 text-stone-600" />
+                          <span>Přebírací dokument k zakázce (A4)</span>
+                        </button>
+                      )}
+                      <button
+                        type="submit"
+                        className="px-5 py-2 bg-[#193F34] hover:bg-[#133229] text-[#F7F3E9] rounded-xl text-xs font-bold shadow-sm cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Check className="w-4 h-4" />
+                        <span>Uložit příjem materiálu</span>
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* SBALENÝ FORMULÁŘ 2: Výdej materiálu brigádníkovi */}
+            {openMaterialForm === 'dispatch' && (
+              <div className="bg-white/95 border-2 border-emerald-600 rounded-2xl p-6 shadow-xl space-y-5 animate-fadeIn">
+                <div className="flex items-center justify-between border-b border-stone-200 pb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-800 font-bold">
+                      📤
+                    </div>
+                    <div>
+                      <h3 className="font-heading font-bold text-lg text-[#193F34]">Výdej materiálu konkrétnímu brigádníkovi</h3>
+                      <p className="text-xs text-stone-500">Automatický propočet potřebných komponent dle počtu kusů a vytvoření předávacího protokolu k elektronickému podpisu</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setOpenMaterialForm('none')}
+                    className="text-stone-400 hover:text-stone-600 p-1 rounded-lg cursor-pointer"
+                  >
+                    <XCircle className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveDispatchSubmit} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Výběr zakázky */}
+                    <div>
+                      <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                        1. Vyberte zakázku *
+                      </label>
+                      <select
+                        value={dispOrderId}
+                        onChange={(e) => {
+                          setDispOrderId(e.target.value);
+                          setDispCustomQuantities({});
+                        }}
+                        required
+                        className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-sm font-bold text-[#193F34] focus:ring-2 focus:ring-[#193F34]"
+                      >
+                        <option value="">-- Vyberte zakázku --</option>
+                        {orders.map(o => (
+                          <option key={o.id} value={o.id.toString()}>
+                            {o.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Výběr brigádníka */}
+                    <div>
+                      <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                        2. Vyberte brigádníka *
+                      </label>
+                      <select
+                        value={dispEmployeeId}
+                        onChange={(e) => setDispEmployeeId(e.target.value)}
+                        required
+                        className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-sm font-bold text-[#193F34] focus:ring-2 focus:ring-[#193F34]"
+                      >
+                        <option value="">-- Vyberte brigádníka --</option>
+                        {dispOrderId && orderAssignments.filter(a => a.orderId === parseInt(dispOrderId, 10)).map(a => (
+                          <option key={`assigned-${a.employeeId}`} value={a.employeeId.toString()}>
+                            ⭐ {a.employeeName} (přiřazeno {a.assignedPieces} ks na zakázce)
+                          </option>
+                        ))}
+                        <option disabled>────────── Ostatní pracovníci ──────────</option>
+                        {employees.map(e => (
+                          <option key={e.id} value={e.id.toString()}>
+                            {e.fullName} {e.employeeNumber ? `(os. č. ${e.employeeNumber})` : ''} [{e.contractType}]
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Počet kusů k výrobě */}
+                    <div>
+                      <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                        3. Plánovaný počet kusů k výrobě *
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={dispPlannedPieces}
+                        onChange={(e) => {
+                          setDispPlannedPieces(parseInt(e.target.value, 10) || 0);
+                          setDispCustomQuantities({});
+                        }}
+                        required
+                        className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-sm font-mono font-bold focus:ring-2 focus:ring-[#193F34]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Rozpis komponent k výdeji */}
+                  {dispOrderId && (() => {
+                    const ordId = parseInt(dispOrderId, 10);
+                    const orderMats = materials.filter(m => m.orderId === ordId);
+                    if (orderMats.length === 0) {
+                      return (
+                        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs flex items-center gap-2">
+                          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+                          <span>
+                            Tato zakázka nemá v systému naskladněný žádný materiál. Nejprve nahoře klikněte na <strong>1. Příjem materiálu od zákazníka</strong> a naskladněte komponenty.
+                          </span>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider">
+                            Automaticky propočítaný materiál k výdeji ({dispPlannedPieces} ks finálu):
+                          </h4>
+                          <span className="text-xs text-stone-500">Množství můžete v tabulce ručně upravit</span>
+                        </div>
+                        <div className="border border-stone-200 rounded-xl overflow-hidden shadow-sm">
+                          <table className="w-full text-left text-xs">
+                            <thead className="bg-stone-100 font-bold text-stone-700">
+                              <tr>
+                                <th className="px-3 py-2">Komponenta / Materiál</th>
+                                <th className="px-3 py-2">Norma na 1 ks</th>
+                                <th className="px-3 py-2">Skladem zbývá</th>
+                                <th className="px-3 py-2">Vydat brigádníkovi</th>
+                                <th className="px-3 py-2">Stav dostupnosti</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-stone-200">
+                              {orderMats.map(m => {
+                                const defaultQty = dispPlannedPieces * m.consumptionPerPiece;
+                                const currentQty = dispCustomQuantities[m.id] !== undefined ? dispCustomQuantities[m.id] : defaultQty;
+                                const isAvailable = m.remainingQuantity >= currentQty;
+                                return (
+                                  <tr key={m.id} className="hover:bg-stone-50">
+                                    <td className="px-3 py-2 font-bold text-[#193F34]">{m.name}</td>
+                                    <td className="px-3 py-2 font-mono">{m.consumptionPerPiece} {m.unit} / ks</td>
+                                    <td className="px-3 py-2 font-mono font-bold text-stone-700">
+                                      {m.remainingQuantity} {m.unit}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      <div className="flex items-center gap-1.5">
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="any"
+                                          value={currentQty}
+                                          onChange={(e) => {
+                                            const val = parseFloat(e.target.value) || 0;
+                                            setDispCustomQuantities({ ...dispCustomQuantities, [m.id]: val });
+                                          }}
+                                          className="w-24 px-2 py-1 bg-white border border-stone-300 rounded font-mono font-bold text-xs"
+                                        />
+                                        <span className="text-stone-500 font-medium">{m.unit}</span>
+                                      </div>
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      {isAvailable ? (
+                                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                                          <CheckCircle2 className="w-3.5 h-3.5" /> Skladem dostatek
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full">
+                                          <AlertTriangle className="w-3.5 h-3.5" /> Chybí {(currentQty - m.remainingQuantity).toFixed(1)} {m.unit}
+                                        </span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Kdo vydal */}
+                    <div>
+                      <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                        Předal koordinátor / skladník
+                      </label>
+                      <input
+                        type="text"
+                        value={dispDispatchedBy}
+                        onChange={(e) => setDispDispatchedBy(e.target.value)}
+                        placeholder="Admin (Marta)"
+                        className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-sm focus:ring-2 focus:ring-[#193F34]"
+                      />
+                    </div>
+
+                    {/* Poznámka k výdeji */}
+                    <div>
+                      <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                        Poznámka k výdeji
+                      </label>
+                      <input
+                        type="text"
+                        value={dispNote}
+                        onChange={(e) => setDispNote(e.target.value)}
+                        placeholder="např. Převzato na domácí kompletaci, termín pondělí 10:00..."
+                        className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-sm focus:ring-2 focus:ring-[#193F34]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Klíčový požadavek ze specifikace: odeslat ke schválení do dokumentů brigádníka */}
+                  <div className="bg-emerald-50 border border-emerald-300 p-4 rounded-xl flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      id="dispCreateDocCheckbox"
+                      checked={dispCreateDoc}
+                      onChange={(e) => setDispCreateDoc(e.target.checked)}
+                      className="w-5 h-5 text-emerald-700 rounded mt-0.5 focus:ring-emerald-600 cursor-pointer"
+                    />
+                    <label htmlFor="dispCreateDocCheckbox" className="cursor-pointer">
+                      <span className="text-sm font-bold text-emerald-950 block">
+                        Vytvořit předávací dokument a zaslat ho ke schválení do profilu brigádníka
+                      </span>
+                      <span className="text-xs text-emerald-800">
+                        Brigádníkovi se po přihlášení na mobilu nebo kiosku zobrazí notifikace se zvonečkem a novým protokolem o převzetí materiálu, který jedním kliknutím elektronicky potvrdí.
+                      </span>
+                    </label>
+                  </div>
+
+                  {/* Akční tlačítka */}
+                  <div className="flex flex-wrap items-center justify-between pt-2 border-t border-stone-200 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setOpenMaterialForm('none')}
+                      className="px-4 py-2 border border-stone-300 rounded-xl text-xs font-bold text-stone-700 hover:bg-stone-50 cursor-pointer"
+                    >
+                      Zrušit
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer flex items-center gap-2"
+                    >
+                      <Send className="w-4 h-4" />
+                      <span>Vydat materiál a vystavit předávací protokol</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* POHLED 1: STAV ZÁSOB MATERIÁLU (BILANCE SKLADU) */}
+            {inventorySubTab === 'stock' && (
+              <div className="bg-white/95 border border-stone-300 rounded-2xl overflow-hidden shadow-sm">
+                <div className="px-6 py-4 border-b border-stone-200 bg-stone-50 flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <h3 className="font-heading font-bold text-base text-[#193F34] flex items-center gap-2">
+                      <Boxes className="w-5 h-5 text-amber-700" />
+                      <span>Stav zásob materiálu k zakázkám</span>
+                    </h3>
+                    <p className="text-xs text-stone-500">
+                      Celkový přehled přijatého materiálu od zákazníků, množství vydaného brigádníkům a aktuální zůstatek na skladě
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={loadData}
+                    className="p-1.5 rounded-lg border border-stone-200 bg-white text-stone-600 hover:text-stone-900 shadow-sm cursor-pointer"
+                    title="Obnovit sklad"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${loadingMaterials ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-stone-100/75 border-b border-stone-200 font-bold text-stone-600 uppercase tracking-wider">
+                      <tr>
+                        <th className="px-4 py-3">Zakázka</th>
+                        <th className="px-4 py-3">Materiál / Komponenta</th>
+                        <th className="px-4 py-3">Spotřeba na 1 ks</th>
+                        <th className="px-4 py-3 text-right">Přijato celkem</th>
+                        <th className="px-4 py-3 text-right">Vydáno brigádníkům</th>
+                        <th className="px-4 py-3 text-right">Zůstatek na skladě</th>
+                        <th className="px-4 py-3 text-center">Status zásoby</th>
+                        <th className="px-4 py-3 text-right">Akce</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-200">
+                      {materials
+                        .filter(m => selectedMaterialOrderId === 'all' || m.orderId === parseInt(selectedMaterialOrderId, 10))
+                        .map(m => {
+                          const isLow = m.remainingQuantity > 0 && m.remainingQuantity < (m.deliveredQuantity * 0.2);
+                          const isOut = m.remainingQuantity <= 0;
+                          return (
+                            <tr key={m.id} className="hover:bg-amber-50/40 transition-colors">
+                              <td className="px-4 py-3">
+                                <span className="font-bold text-[#193F34] block">{m.orderName}</span>
+                                {m.targetPieces ? (
+                                  <span className="text-[11px] text-stone-500 font-mono">Cíl: {m.targetPieces} ks</span>
+                                ) : null}
+                              </td>
+                              <td className="px-4 py-3 font-medium text-stone-900">
+                                <span className="font-bold">{m.name}</span>
+                                {m.note && <span className="text-[11px] text-stone-500 block">📝 {m.note}</span>}
+                                {m.receivedAt && <span className="text-[10px] text-stone-400 block font-mono">Přijato: {m.receivedAt}</span>}
+                              </td>
+                              <td className="px-4 py-3 font-mono">
+                                <strong>{m.consumptionPerPiece}</strong> {m.unit}/ks
+                              </td>
+                              <td className="px-4 py-3 text-right font-mono font-bold text-stone-800">
+                                {m.deliveredQuantity} {m.unit}
+                              </td>
+                              <td className="px-4 py-3 text-right font-mono text-emerald-700 font-bold">
+                                {m.dispatchedQuantity} {m.unit}
+                              </td>
+                              <td className="px-4 py-3 text-right font-mono font-bold text-sm">
+                                <span className={isOut ? 'text-rose-600' : (isLow ? 'text-amber-600' : 'text-[#193F34]')}>
+                                  {m.remainingQuantity} {m.unit}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                {isOut ? (
+                                  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                                    Vyčerpáno
+                                  </span>
+                                ) : isLow ? (
+                                  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                    Nízký stav
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                    Dostatek
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const ord = orders.find(o => o.id === m.orderId);
+                                      if (ord) setSelectedPrintReceiptOrder(ord);
+                                    }}
+                                    className="p-1.5 text-stone-600 hover:text-[#193F34] hover:bg-stone-100 rounded-lg cursor-pointer"
+                                    title="Tisk Přebíracího dokumentu k zakázce"
+                                  >
+                                    <Printer className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteMaterial(m.id)}
+                                    className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
+                                    title="Smazat materiál ze skladu"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      {materials.filter(m => selectedMaterialOrderId === 'all' || m.orderId === parseInt(selectedMaterialOrderId, 10)).length === 0 && (
+                        <tr>
+                          <td colSpan={8} className="px-4 py-8 text-center text-stone-500">
+                            Zatím zde není zaevidován žádný materiál. Klikněte nahoře na tlačítko <strong>1. Příjem materiálu od zákazníka</strong>.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* POHLED 2: HISTORIE VÝDEJEK BRIGÁDNÍKŮM */}
+            {inventorySubTab === 'dispatches' && (
+              <div className="bg-white/95 border border-stone-300 rounded-2xl overflow-hidden shadow-sm">
+                <div className="px-6 py-4 border-b border-stone-200 bg-stone-50 flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <h3 className="font-heading font-bold text-base text-[#193F34] flex items-center gap-2">
+                      <Send className="w-5 h-5 text-emerald-700" />
+                      <span>Historie výdejek materiálu brigádníkům</span>
+                    </h3>
+                    <p className="text-xs text-stone-500">
+                      Evidované výdejky materiálu a komponent k výrobě s online stavem potvrzení v profilech brigádníků
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={loadData}
+                    className="p-1.5 rounded-lg border border-stone-200 bg-white text-stone-600 hover:text-stone-900 shadow-sm cursor-pointer"
+                    title="Obnovit výdejky"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${loadingMaterials ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-stone-100/75 border-b border-stone-200 font-bold text-stone-600 uppercase tracking-wider">
+                      <tr>
+                        <th className="px-4 py-3">Výdejka & Datum</th>
+                        <th className="px-4 py-3">Zakázka</th>
+                        <th className="px-4 py-3">Brigádník</th>
+                        <th className="px-4 py-3">Závazek ks</th>
+                        <th className="px-4 py-3">Vydané položky</th>
+                        <th className="px-4 py-3">Předal</th>
+                        <th className="px-4 py-3 text-center">Stav schválení</th>
+                        <th className="px-4 py-3 text-right">Akce</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-200">
+                      {dispatches
+                        .filter(d => selectedMaterialOrderId === 'all' || d.orderId === parseInt(selectedMaterialOrderId, 10))
+                        .map(d => (
+                          <tr key={d.id} className="hover:bg-emerald-50/40 transition-colors">
+                            <td className="px-4 py-3">
+                              <span className="font-mono font-bold text-[#193F34] block">VYD-{d.id}</span>
+                              <span className="text-[10px] text-stone-400 font-mono">{d.dispatchedAt}</span>
+                            </td>
+                            <td className="px-4 py-3 font-bold text-stone-900">
+                              {d.orderName}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="font-bold text-stone-900 block">{d.employeeName}</span>
+                              {d.employeeNumber && <span className="text-[10px] text-stone-500 font-mono">Os. č.: {d.employeeNumber}</span>}
+                            </td>
+                            <td className="px-4 py-3 font-mono font-bold text-[#193F34]">
+                              {d.plannedPieces} ks
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="space-y-0.5">
+                                {d.items.map((itm, idx) => (
+                                  <div key={idx} className="text-[11px] text-stone-700">
+                                    • {itm.materialName}: <strong className="font-mono">{itm.quantity} {itm.unit}</strong>
+                                  </div>
+                                ))}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-stone-600">
+                              {d.dispatchedBy || 'Admin'}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              {d.confirmedAt ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>Potvrzeno {d.confirmedAt}</span>
+                                </span>
+                              ) : d.documentId ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200 animate-pulse">
+                                  <Clock4 className="w-3.5 h-3.5 text-amber-600" />
+                                  <span>Čeká na potvrzení</span>
+                                </span>
+                              ) : (
+                                <span className="text-stone-400 text-[11px]">
+                                  Fyzický výdej
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedPrintDispatch(d)}
+                                  className="p-1.5 text-stone-600 hover:text-emerald-800 hover:bg-stone-100 rounded-lg cursor-pointer"
+                                  title="Zobrazit a vytisknout Předávací protokol A4"
+                                >
+                                  <Printer className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteDispatch(d.id)}
+                                  className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
+                                  title="Smazat výdejku"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      {dispatches.filter(d => selectedMaterialOrderId === 'all' || d.orderId === parseInt(selectedMaterialOrderId, 10)).length === 0 && (
+                        <tr>
+                          <td colSpan={8} className="px-4 py-8 text-center text-stone-500">
+                            Zatím nebyla vystavena žádná výdejka materiálu. Klikněte nahoře na <strong>2. Výdej materiálu brigádníkovi</strong>.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TISKOVÝ MODÁL: PŘEBÍRACÍ DOKUMENT MATERIÁLU K ZAKÁZCE (A4) */}
+        {selectedPrintReceiptOrder && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-white rounded-2xl max-w-4xl w-full p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto print:p-0 print:shadow-none print:max-w-none print:w-full">
+              {/* Hlavička tiskopisu */}
+              <div className="flex items-start justify-between border-b-2 border-[#193F34] pb-4">
+                <div className="flex items-center gap-4">
+                  <img src={GREENBERG_LOGO} alt="Greenberg" className="h-12 w-auto object-contain" />
+                  <div>
+                    <h2 className="font-heading font-black text-xl text-[#193F34] uppercase tracking-wide">
+                      Greenberg & KiPacky s.r.o.
+                    </h2>
+                    <p className="text-xs text-stone-500">Chráněná dílna a zakázková kompletace</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="px-3 py-1 bg-amber-100 text-amber-900 font-bold rounded-lg text-xs uppercase font-mono">
+                    Skladový doklad: PŘEJÍMKA
+                  </span>
+                  <p className="text-xs text-stone-500 mt-1 font-mono">
+                    Datum: {new Date().toLocaleDateString('cs-CZ')}
+                  </p>
+                </div>
+              </div>
+
+              {/* Titul */}
+              <div className="text-center py-2">
+                <h1 className="font-heading font-black text-2xl text-[#193F34] uppercase tracking-wider">
+                  PŘEBÍRACÍ DOKUMENT MATERIÁLU K ZAKÁZCE
+                </h1>
+                <p className="text-sm font-bold text-stone-700">
+                  Zakázka: <span className="text-[#193F34]">{selectedPrintReceiptOrder.name}</span>
+                </p>
+              </div>
+
+              {/* Informace o zakázce a zákazníkovi */}
+              <div className="grid grid-cols-2 gap-4 bg-stone-50 p-4 rounded-xl text-xs border border-stone-200">
+                <div>
+                  <span className="text-stone-500 block uppercase font-bold text-[10px]">Předávající (Zákazník / Dodavatel):</span>
+                  <span className="font-bold text-sm text-stone-900 block">
+                    {selectedPrintReceiptOrder.customerContact || 'Neuvedeno'}
+                  </span>
+                  <span className="text-stone-600 block mt-1">
+                    Místo realizace: <strong>{selectedPrintReceiptOrder.workplaceMode || 'Na dílně'}</strong>
+                  </span>
+                </div>
+                <div>
+                  <span className="text-stone-500 block uppercase font-bold text-[10px]">Příjemce (Sklad / Zhotovitel):</span>
+                  <span className="font-bold text-sm text-[#193F34] block">Greenberg & KiPacky s.r.o.</span>
+                  <span className="text-stone-600 block mt-1">
+                    Cílový objem zakázky: <strong className="font-mono text-emerald-800">{selectedPrintReceiptOrder.totalPiecesTarget} ks</strong>
+                  </span>
+                  {selectedPrintReceiptOrder.coordinatorContact && (
+                    <span className="text-stone-600 block">
+                      Koordinátor dílny: <strong>{selectedPrintReceiptOrder.coordinatorContact}</strong>
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Tabulka přijatých komponent */}
+              <div>
+                <h3 className="font-heading font-bold text-sm text-[#193F34] uppercase tracking-wider mb-2">
+                  Soupis přijatého materiálu a komponent
+                </h3>
+                <table className="w-full text-left text-xs border border-stone-300 rounded-xl overflow-hidden">
+                  <thead className="bg-[#193F34] text-[#F7F3E9] font-bold">
+                    <tr>
+                      <th className="px-3 py-2">Položka / Materiál</th>
+                      <th className="px-3 py-2 text-right">Dodané množství</th>
+                      <th className="px-3 py-2">Jednotka</th>
+                      <th className="px-3 py-2">Norma na 1 ks</th>
+                      <th className="px-3 py-2 text-center">Shoda s cílem</th>
+                      <th className="px-3 py-2">Poznámka / DL</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-200">
+                    {materials
+                      .filter(m => m.orderId === selectedPrintReceiptOrder.id)
+                      .map(m => (
+                        <tr key={m.id}>
+                          <td className="px-3 py-2 font-bold text-stone-900">{m.name}</td>
+                          <td className="px-3 py-2 text-right font-mono font-bold">{m.deliveredQuantity}</td>
+                          <td className="px-3 py-2 font-medium">{m.unit}</td>
+                          <td className="px-3 py-2 font-mono">{m.consumptionPerPiece} {m.unit}/ks</td>
+                          <td className="px-3 py-2 text-center">
+                            {m.matchesTargetPieces ? (
+                              <span className="font-bold text-emerald-700">ANO</span>
+                            ) : (
+                              <span className="font-bold text-rose-700">NE (rozdíl)</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-stone-600">{m.note || '—'}</td>
+                        </tr>
+                      ))}
+                    {materials.filter(m => m.orderId === selectedPrintReceiptOrder.id).length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-4 text-center text-stone-500">
+                          K této zakázce zatím není v systému zaevidován žádný materiál.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Prohlášení a podpisy */}
+              <div className="pt-6 border-t border-stone-200 text-xs text-stone-600 space-y-8">
+                <p>
+                  Přebírající potvrzuje fyzické převzetí výše specifikovaného materiálu ve vykazovaném množství a stavu.
+                </p>
+                <div className="grid grid-cols-2 gap-12 pt-6">
+                  <div className="text-center border-t border-stone-400 pt-2">
+                    <p className="font-bold text-stone-800">Předal za zákazníka / přepravce</p>
+                    <p className="text-[10px] text-stone-400 mt-0.5">(jméno, podpis, razítko)</p>
+                  </div>
+                  <div className="text-center border-t border-stone-400 pt-2">
+                    <p className="font-bold text-stone-800">Převzal za sklad Greenberg & KiPacky</p>
+                    <p className="text-[10px] text-stone-400 mt-0.5">(jméno, podpis, razítko)</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tlačítka modálu */}
+              <div className="pt-4 border-t border-stone-200 flex justify-end gap-3 print:hidden">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPrintReceiptOrder(null)}
+                  className="px-4 py-2 rounded-xl bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold cursor-pointer"
+                >
+                  Zavřít
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-5 py-2 rounded-xl bg-[#193F34] hover:bg-[#133229] text-[#F7F3E9] text-xs font-bold flex items-center gap-2 cursor-pointer shadow-sm"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Vytisknout dokument (A4)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TISKOVÝ MODÁL: PŘEDÁVACÍ PROTOKOL MATERIÁLU BRIGÁDNÍKOVI (A4) */}
+        {selectedPrintDispatch && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-white rounded-2xl max-w-3xl w-full p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto print:p-0 print:shadow-none print:max-w-none print:w-full">
+              {/* Hlavička */}
+              <div className="flex items-start justify-between border-b-2 border-[#193F34] pb-4">
+                <div className="flex items-center gap-4">
+                  <img src={GREENBERG_LOGO} alt="Greenberg" className="h-12 w-auto object-contain" />
+                  <div>
+                    <h2 className="font-heading font-black text-xl text-[#193F34] uppercase tracking-wide">
+                      Greenberg & KiPacky s.r.o.
+                    </h2>
+                    <p className="text-xs text-stone-500">Zakázková kompletace a chráněná dílna</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="px-3 py-1 bg-emerald-100 text-emerald-900 font-bold rounded-lg text-xs uppercase font-mono">
+                    Výdejka: VYD-{selectedPrintDispatch.id}
+                  </span>
+                  <p className="text-xs text-stone-500 mt-1 font-mono">
+                    Datum výdeje: {selectedPrintDispatch.dispatchedAt}
+                  </p>
+                </div>
+              </div>
+
+              {/* Titul */}
+              <div className="text-center py-2">
+                <h1 className="font-heading font-black text-2xl text-[#193F34] uppercase tracking-wider">
+                  PŘEDÁVACÍ PROTOKOL MATERIÁLU BRIGÁDNÍKOVI
+                </h1>
+                <p className="text-sm font-bold text-stone-700">
+                  Zakázka: <span className="text-[#193F34]">{selectedPrintDispatch.orderName}</span>
+                </p>
+              </div>
+
+              {/* Údaje o příjemci a předávajícím */}
+              <div className="grid grid-cols-2 gap-4 bg-stone-50 p-4 rounded-xl text-xs border border-stone-200">
+                <div>
+                  <span className="text-stone-500 block uppercase font-bold text-[10px]">Příjemce materiálu (Pracovník / Brigádník):</span>
+                  <span className="font-bold text-base text-stone-900 block mt-0.5">
+                    {selectedPrintDispatch.employeeName}
+                  </span>
+                  {selectedPrintDispatch.employeeNumber && (
+                    <span className="text-stone-600 block font-mono text-xs">
+                      Osobní číslo: <strong>{selectedPrintDispatch.employeeNumber}</strong>
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <span className="text-stone-500 block uppercase font-bold text-[10px]">Předávající a závazek výroby:</span>
+                  <span className="text-stone-700 block mt-0.5">
+                    Předal koordinátor: <strong>{selectedPrintDispatch.dispatchedBy || 'Admin'}</strong>
+                  </span>
+                  <span className="text-stone-800 block font-bold text-sm mt-1">
+                    Závazek ke zhotovení: <span className="font-mono text-emerald-800">{selectedPrintDispatch.plannedPieces} ks</span>
+                  </span>
+                  {selectedPrintDispatch.note && (
+                    <span className="text-stone-600 block text-[11px] mt-1">
+                      Poznámka: {selectedPrintDispatch.note}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Tabulka vydaného materiálu */}
+              <div>
+                <h3 className="font-heading font-bold text-sm text-[#193F34] uppercase tracking-wider mb-2">
+                  Soupis vydaného materiálu a komponent
+                </h3>
+                <table className="w-full text-left text-xs border border-stone-300 rounded-xl overflow-hidden">
+                  <thead className="bg-[#193F34] text-[#F7F3E9] font-bold">
+                    <tr>
+                      <th className="px-3 py-2">Materiál / Komponenta</th>
+                      <th className="px-3 py-2 text-right">Vydané množství</th>
+                      <th className="px-3 py-2">Měrná jednotka</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-200">
+                    {selectedPrintDispatch.items.map((itm, idx) => (
+                      <tr key={idx}>
+                        <td className="px-3 py-2 font-bold text-stone-900">{itm.materialName}</td>
+                        <td className="px-3 py-2 text-right font-mono font-bold text-emerald-800 text-sm">{itm.quantity}</td>
+                        <td className="px-3 py-2 font-medium">{itm.unit}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Čestné prohlášení a stav potvrzení */}
+              <div className="space-y-4">
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900">
+                  <strong>Čestné prohlášení:</strong> Svým potvrzením stvrzuji fyzické převzetí výše uvedeného materiálu v deklarovaném množství a bez zjevných vad. Zavazuji se materiál využít výhradně ke kompletaci uvedené zakázky, chránit jej před poškozením a zbylé či vadné kusy vrátit koordinátorovi.
+                </div>
+
+                {selectedPrintDispatch.confirmedAt ? (
+                  <div className="p-4 bg-emerald-100 border-2 border-emerald-600 rounded-xl text-center">
+                    <span className="font-mono font-bold text-emerald-950 uppercase tracking-wider block text-xs">
+                      ✅ ELEKTRONICKY POTVRZENO V SYSTÉMU KÍPAČKY
+                    </span>
+                    <span className="text-sm font-bold text-emerald-900 block mt-1">
+                      {selectedPrintDispatch.employeeName} dne {selectedPrintDispatch.confirmedAt}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-12 pt-8 text-xs text-stone-600">
+                    <div className="text-center border-t border-stone-400 pt-2">
+                      <p className="font-bold text-stone-800">Předal koordinátor</p>
+                      <p className="text-[10px] text-stone-400 mt-0.5">(podpis)</p>
+                    </div>
+                    <div className="text-center border-t border-stone-400 pt-2">
+                      <p className="font-bold text-stone-800">Převzal brigádník</p>
+                      <p className="text-[10px] text-stone-400 mt-0.5">(podpis)</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Tlačítka modálu */}
+              <div className="pt-4 border-t border-stone-200 flex justify-end gap-3 print:hidden">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPrintDispatch(null)}
+                  className="px-4 py-2 rounded-xl bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold cursor-pointer"
+                >
+                  Zavřít
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-2 cursor-pointer shadow-sm"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Vytisknout předávací protokol (A4)</span>
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

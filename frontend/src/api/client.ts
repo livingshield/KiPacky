@@ -11,6 +11,8 @@ import {
   DocumentItem,
   DocumentConsentItem,
   PlannedShiftItem,
+  OrderMaterialItem,
+  MaterialDispatchItem,
 } from '../types';
 
 const API_BASE = './api.ashx';
@@ -551,6 +553,83 @@ export async function deleteOrderAssignment(id: number): Promise<void> {
   });
   if (!res.ok) throw new Error('Chyba při odebírání přiřazení');
 }
+
+// --- FÁZE 3: Sklad materiálu & výdejky ---
+
+export async function fetchOrderMaterials(orderId?: number): Promise<OrderMaterialItem[]> {
+  const query = new URLSearchParams({ action: 'get-order-materials' });
+  if (orderId) query.append('orderId', orderId.toString());
+  const res = await fetch(`${API_BASE}?${query.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Chyba při načítání materiálu');
+  return res.json();
+}
+
+export async function saveOrderMaterial(data: Partial<OrderMaterialItem>): Promise<void> {
+  const res = await fetch(`${API_BASE}?action=save-order-material`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Chyba při ukládání materiálu');
+  }
+}
+
+export async function deleteOrderMaterial(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}?action=delete-order-material&id=${id}`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Chyba při mazání materiálu');
+}
+
+export async function fetchMaterialDispatches(params?: {
+  orderId?: number;
+  employeeId?: number;
+}): Promise<MaterialDispatchItem[]> {
+  const query = new URLSearchParams({ action: 'get-material-dispatches' });
+  if (params?.orderId) query.append('orderId', params.orderId.toString());
+  if (params?.employeeId) query.append('employeeId', params.employeeId.toString());
+  const res = await fetch(`${API_BASE}?${query.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Chyba při načítání výdejek materiálu');
+  return res.json();
+}
+
+export async function saveMaterialDispatch(data: {
+  id?: number;
+  orderId: number;
+  employeeId: number;
+  plannedPieces: number;
+  dispatchedBy?: string;
+  note?: string;
+  status?: string;
+  createDocument?: boolean;
+  items: Array<{ materialId: number; materialName?: string; quantity: number; unit?: string }>;
+}): Promise<void> {
+  const res = await fetch(`${API_BASE}?action=save-material-dispatch`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Chyba při ukládání výdejky materiálu');
+  }
+}
+
+export async function deleteMaterialDispatch(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}?action=delete-material-dispatch&id=${id}`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Chyba při mazání výdejky materiálu');
+}
+
 
 export async function fetchProductionLogs(params?: {
   status?: string;
