@@ -63,12 +63,11 @@ export const AdminVideosSection: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [vids, views] = await Promise.all([
-        fetchVideos({ includeInactive: true }),
-        fetchVideoViews(),
-      ]);
-      setVideos(vids);
-      setVideoViews(views);
+      const vidsPromise = fetchVideos({ includeInactive: true });
+      const viewsPromise = fetchVideoViews().catch(() => []);
+      const [vids, views] = await Promise.all([vidsPromise, viewsPromise]);
+      setVideos(vids || []);
+      setVideoViews(views || []);
     } catch (err: any) {
       setError(err?.message || 'Chyba při načítání videí');
     } finally {

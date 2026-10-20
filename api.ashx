@@ -5114,7 +5114,7 @@ ORDER BY p.[Date] ASC";
             conn.Open();
             EnsureSchemaMigrations(conn);
             string sql = @"
-                SELECT vv.Id, vv.VideoId, v.Title, vv.EmployeeId, e.Name, e.ContractType, vv.ViewedAt
+                SELECT vv.Id, vv.VideoId, v.Title, vv.EmployeeId, e.FullName, e.ContractType, vv.ViewedAt
                 FROM [Kipacky].[kipa_VideoViews] vv
                 INNER JOIN [Kipacky].[kipa_Videos] v ON v.Id = vv.VideoId
                 INNER JOIN [Kipacky].[kipa_Employees] e ON e.Id = vv.EmployeeId
