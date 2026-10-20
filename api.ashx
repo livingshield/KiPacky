@@ -711,6 +711,22 @@ BEGIN
         1
     );
 END
+
+IF NOT EXISTS (SELECT 1 FROM [Kipacky].[kipa_Videos] WHERE [VideoId] = 'vc1uD09xaC8')
+BEGIN
+    INSERT INTO [Kipacky].[kipa_Videos] ([Title], [Url], [VideoId], [Category], [Description], [Author], [ThumbnailUrl], [Duration], [IsActive])
+    VALUES (
+        N'Přísná pravidla, která formují vaše pracoviště',
+        N'https://youtube.com/shorts/vc1uD09xaC8',
+        N'vc1uD09xaC8',
+        N'BOZP a bezpečnost práce',
+        N'Přehled přísných pravidel BOZP ve skladu a na pracovišti, která zajišťují bezpečnost při práci.',
+        N'Jan Kytýr',
+        N'https://i.ytimg.com/vi/vc1uD09xaC8/hqdefault.jpg',
+        N'',
+        1
+    );
+END
 ";
             using (var cmd = new SqlCommand(sql, conn))
             {
