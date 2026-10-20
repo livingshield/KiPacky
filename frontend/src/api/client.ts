@@ -13,6 +13,8 @@ import {
   PlannedShiftItem,
   OrderMaterialItem,
   MaterialDispatchItem,
+  VideoItem,
+  VideoViewItem,
 } from '../types';
 
 const API_BASE = './api.ashx';
@@ -848,3 +850,140 @@ export function getCsvDownloadUrl(year: number, month: number, employeeId?: numb
   if (employeeId) query.append('employeeId', employeeId.toString());
   return `${API_BASE}?${query.toString()}`;
 }
+
+// ==========================================
+// FÁZE 6: VIDEA (BOZP & ŠKOLENÍ + KiYoDo)
+// ==========================================
+
+export async function fetchVideos(params?: {
+  employeeId?: number;
+  includeInactive?: boolean;
+}): Promise<VideoItem[]> {
+  const query = new URLSearchParams({ action: 'get-videos' });
+  if (params?.employeeId) query.append('employeeId', params.employeeId.toString());
+  if (params?.includeInactive) query.append('includeInactive', 'true');
+  const res = await fetch(`${API_BASE}?${query.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Chyba při načítání videí');
+  return res.json();
+}
+
+export async function saveVideo(data: {
+  id?: number;
+  title: string;
+  url: string;
+  videoId?: string;
+  category?: string;
+  description?: string;
+  author?: string;
+  thumbnailUrl?: string;
+  duration?: string;
+  isActive?: boolean;
+}): Promise<{ success: boolean; id: number; videoId: string }> {
+  const res = await fetch(`${API_BASE}?action=save-video`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Chyba při ukládání videa');
+  }
+  return res.json();
+}
+
+export async function deleteVideo(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}?action=delete-video`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ id }),
+  });
+  if (!res.ok) throw new Error('Chyba při mazání videa');
+}
+
+export async function confirmVideoView(employeeId: number, videoId: number): Promise<{ success: boolean; viewedAt: string }> {
+  const res = await fetch(`${API_BASE}?action=confirm-video-view`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ employeeId, videoId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Chyba při potvrzení zhlédnutí videa');
+  }
+  return res.json();
+}
+
+export async function fetchVideoViews(videoId?: number): Promise<VideoViewItem[]> {
+  const query = new URLSearchParams({ action: 'get-video-views' });
+  if (videoId) query.append('videoId', videoId.toString());
+  const res = await fetch(`${API_BASE}?${query.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Chyba při načítání zhlédnutí videí');
+  return res.json();
+}
+
+export function extractYouTubeId(inputUrl: string): string | null {
+  if (!inputUrl) return null;
+  const trimmed = inputUrl.trim();
+  const regExp = /(?:v=|\/embed\/|youtu\.be\/|\/shorts\/|\/live\/)([a-zA-Z0-9_-]{11})/;
+  const match = trimmed.match(regExp);
+  if (match && match[1]) return match[1];
+  if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) return trimmed;
+  return null;
+}
+
+export async function fetchYouTubeVideoMeta(url: string): Promise<{
+  videoId: string;
+  title: string;
+  author: string;
+  thumbnailUrl: string;
+  duration?: string;
+}> {
+  const videoId = extractYouTubeId(url);
+  if (!videoId) {
+    throw new Error('Neplatný YouTube odkaz');
+  }
+  const cleanUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+  try {
+    const res = await fetch(`/api/info?url=${encodeURIComponent(cleanUrl)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.title) {
+        return {
+          videoId: data.videoId || videoId,
+          title: data.title,
+          author: data.author || '',
+          thumbnailUrl: data.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+          duration: data.duration || '',
+        };
+      }
+    }
+  } catch {
+    // Fallback na oEmbed níže
+  }
+
+  const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(cleanUrl)}&format=json`;
+  const res2 = await fetch(oembedUrl);
+  if (!res2.ok) {
+    return {
+      videoId,
+      title: '',
+      author: '',
+      thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+      duration: '',
+    };
+  }
+  const data2 = await res2.json();
+  return {
+    videoId,
+    title: data2.title || '',
+    author: data2.author_name || '',
+    thumbnailUrl: data2.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+    duration: '',
+  };
+}
+

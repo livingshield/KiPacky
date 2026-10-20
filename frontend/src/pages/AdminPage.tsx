@@ -28,7 +28,9 @@ import {
   AlertTriangle,
   Info,
   X,
+  Video,
 } from 'lucide-react';
+import { AdminVideosSection } from '../components/AdminVideosSection';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   fetchEmployees,
@@ -83,7 +85,7 @@ interface AdminPageProps {
 
 export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk, onSwitchToV2 }) => {
   const [activeTab, setActiveTab] = useState<
-    'employees' | 'logs' | 'production' | 'hr' | 'reports'
+    'employees' | 'logs' | 'production' | 'hr' | 'reports' | 'videos'
   >('employees');
 
   // ==========================================
@@ -996,6 +998,19 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk, onS
             >
               <FileSpreadsheet className="w-4 h-4" />
               <span>Měsíční výkazy & Mzdy</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('videos')}
+              className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'videos'
+                  ? 'bg-[#D7BE97] text-[#193F34] font-bold shadow-sm'
+                  : 'text-[#C9DDD0] hover:text-[#F7F3E9]'
+              }`}
+            >
+              <Video className="w-4 h-4" />
+              <span>Videa</span>
             </button>
           </nav>
 
@@ -3356,6 +3371,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onLogout, onGoToKiosk, onS
               </div>
             )}
           </div>
+        )}
+        {/* ========================================== */}
+        {/* TAB 6: VIDEA (BOZP & ŠKOLENÍ + KiYoDo)     */}
+        {/* ========================================== */}
+        {activeTab === 'videos' && (
+          <AdminVideosSection />
         )}
       </main>
 

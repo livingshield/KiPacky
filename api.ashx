@@ -7,6 +7,7 @@ using System.Data.SqlClient;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Web;
 using System.Web.Script.Serialization;
 
@@ -73,6 +74,12 @@ public class KipackyApiHandler : IHttpHandler
                     break;
                 case "download-payslip-kiosk":
                     HandleDownloadPayslipKiosk(context);
+                    break;
+                case "get-videos":
+                    HandleGetVideos(context);
+                    break;
+                case "confirm-video-view":
+                    HandleConfirmVideoView(context);
                     break;
 
                 // --- AUTH ENDPOINTY ---
@@ -240,6 +247,18 @@ public class KipackyApiHandler : IHttpHandler
                 case "upload-payslips-batch":
                     RequireAuth(context);
                     HandleUploadPayslipsBatch(context);
+                    break;
+                case "save-video":
+                    RequireAuth(context);
+                    HandleSaveVideo(context);
+                    break;
+                case "delete-video":
+                    RequireAuth(context);
+                    HandleDeleteVideo(context);
+                    break;
+                case "get-video-views":
+                    RequireAuth(context);
+                    HandleGetVideoViews(context);
                     break;
 
                 // --- ADMIN: FINÁLNÍ MĚSÍČNÍ REPORT A CSV ---
@@ -632,6 +651,66 @@ IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].
 
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].[kipa_Documents]') AND name = 'Priority')
     ALTER TABLE [Kipacky].[kipa_Documents] ADD [Priority] NVARCHAR(20) NOT NULL DEFAULT 'Normal';
+
+-- FÁZE 6: Sekce Videa (BOZP a školící videa)
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'kipa_Videos' AND schema_id = SCHEMA_ID('Kipacky'))
+BEGIN
+    CREATE TABLE [Kipacky].[kipa_Videos] (
+        [Id] INT IDENTITY(1,1) PRIMARY KEY,
+        [Title] NVARCHAR(300) NOT NULL,
+        [Url] NVARCHAR(500) NOT NULL,
+        [VideoId] NVARCHAR(50) NULL,
+        [Category] NVARCHAR(100) NOT NULL DEFAULT N'BOZP a bezpečnost práce',
+        [Description] NVARCHAR(MAX) NULL,
+        [Author] NVARCHAR(200) NULL,
+        [ThumbnailUrl] NVARCHAR(500) NULL,
+        [Duration] NVARCHAR(50) NULL,
+        [IsActive] BIT NOT NULL DEFAULT 1,
+        [CreatedAt] DATETIME NOT NULL DEFAULT GETDATE()
+    );
+END
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'kipa_VideoViews' AND schema_id = SCHEMA_ID('Kipacky'))
+BEGIN
+    CREATE TABLE [Kipacky].[kipa_VideoViews] (
+        [Id] INT IDENTITY(1,1) PRIMARY KEY,
+        [VideoId] INT NOT NULL,
+        [EmployeeId] INT NOT NULL,
+        [ViewedAt] DATETIME NOT NULL DEFAULT GETDATE()
+    );
+END
+
+IF NOT EXISTS (SELECT 1 FROM [Kipacky].[kipa_Videos] WHERE [VideoId] = '7TNIb7IXXJY')
+BEGIN
+    INSERT INTO [Kipacky].[kipa_Videos] ([Title], [Url], [VideoId], [Category], [Description], [Author], [ThumbnailUrl], [Duration], [IsActive])
+    VALUES (
+        N'Vizuální průvodce 101 2005 Sb',
+        N'https://www.youtube.com/watch?v=7TNIb7IXXJY',
+        N'7TNIb7IXXJY',
+        N'BOZP a bezpečnost práce',
+        N'Vizuální průvodce nařízením vlády č. 101/2005 Sb., o podrobnějších požadavcích na pracoviště a pracovní prostředí.',
+        N'Jan Kytýr',
+        N'https://i.ytimg.com/vi/7TNIb7IXXJY/hqdefault.jpg',
+        N'',
+        1
+    );
+END
+
+IF NOT EXISTS (SELECT 1 FROM [Kipacky].[kipa_Videos] WHERE [VideoId] = 'v34ZPNiWroM')
+BEGIN
+    INSERT INTO [Kipacky].[kipa_Videos] ([Title], [Url], [VideoId], [Category], [Description], [Author], [ThumbnailUrl], [Duration], [IsActive])
+    VALUES (
+        N'Rizika výroby papírových obalů',
+        N'https://www.youtube.com/watch?v=v34ZPNiWroM',
+        N'v34ZPNiWroM',
+        N'BOZP a bezpečnost práce',
+        N'Bezpečnost práce, prevence úrazů a rizika při výrobě a kompletaci papírových obalů.',
+        N'Jan Kytýr',
+        N'https://i.ytimg.com/vi/v34ZPNiWroM/hqdefault.jpg',
+        N'',
+        1
+    );
+END
 ";
             using (var cmd = new SqlCommand(sql, conn))
             {
@@ -767,6 +846,7 @@ IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('[Kipacky].
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
+            EnsureSchemaMigrations(conn);
             int empId = 0;
             string fullName = "";
             string contractType = "";
@@ -942,7 +1022,7 @@ ORDER BY s.ShiftDate ASC, s.StartTime ASC";
 SELECT d.Id, d.Title, ISNULL(d.ShortText, d.Content) AS ShortText, ISNULL(d.FullText, '') AS FullText,
        (SELECT MAX(c.AgreedAt) FROM [Kipacky].[kipa_DocumentConsents] c WHERE c.EmployeeId = @empId AND c.DocumentId = d.Id) AS LastAgreedAt
 FROM [Kipacky].[kipa_Documents] d
-WHERE d.IsActive = 1 AND (d.TargetEmployeeId IS NULL OR d.TargetEmployeeId = @empId)
+WHERE d.IsActive = 1 AND ISNULL(d.DocumentType, 'General') != 'Payslip' AND (d.TargetEmployeeId IS NULL OR d.TargetEmployeeId = @empId)
 ORDER BY d.Id ASC";
             using (var cmd = new SqlCommand(docSql, conn))
             {
@@ -977,6 +1057,50 @@ ORDER BY d.Id ASC";
                 todaySubmittedPieces = Convert.ToInt32(cmd.ExecuteScalar());
             }
 
+            // 6. Videa (BOZP a školící videa)
+            var videosList = new List<Dictionary<string, object>>();
+            string videoSql = @"
+SELECT v.Id, v.Title, v.Url, ISNULL(v.VideoId, ''), ISNULL(v.Category, N'BOZP a bezpečnost práce'),
+       ISNULL(v.Description, ''), ISNULL(v.Author, ''), ISNULL(v.ThumbnailUrl, ''), ISNULL(v.Duration, ''),
+       v.IsActive, v.CreatedAt,
+       (SELECT MAX(vw.ViewedAt) FROM [Kipacky].[kipa_VideoViews] vw WHERE vw.VideoId = v.Id AND vw.EmployeeId = @empId) AS LastViewedAt
+FROM [Kipacky].[kipa_Videos] v
+WHERE v.IsActive = 1
+ORDER BY v.Id ASC";
+            using (var cmd = new SqlCommand(videoSql, conn))
+            {
+                cmd.Parameters.AddWithValue("@empId", empId);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        DateTime? lastViewed = reader.IsDBNull(11) ? (DateTime?)null : reader.GetDateTime(11);
+                        string vidId = reader.GetString(3);
+                        string thumb = reader.GetString(7);
+                        if (string.IsNullOrEmpty(thumb) && !string.IsNullOrEmpty(vidId))
+                        {
+                            thumb = "https://i.ytimg.com/vi/" + vidId + "/hqdefault.jpg";
+                        }
+                        videosList.Add(new Dictionary<string, object>
+                        {
+                            { "id", reader.GetInt32(0) },
+                            { "title", reader.GetString(1) },
+                            { "url", reader.GetString(2) },
+                            { "videoId", vidId },
+                            { "category", reader.GetString(4) },
+                            { "description", reader.GetString(5) },
+                            { "author", reader.GetString(6) },
+                            { "thumbnailUrl", thumb },
+                            { "duration", reader.GetString(8) },
+                            { "isActive", reader.GetBoolean(9) },
+                            { "createdAt", reader.GetDateTime(10).ToString("s") },
+                            { "lastViewedAt", lastViewed.HasValue ? lastViewed.Value.ToString("s") : null },
+                            { "isViewed", lastViewed.HasValue }
+                        });
+                    }
+                }
+            }
+
             SendJson(context, new Dictionary<string, object>
             {
                 { "employeeId", empId },
@@ -995,7 +1119,8 @@ ORDER BY d.Id ASC";
                 { "upcomingShifts", upcomingShifts },
                 { "openShifts", openShifts },
                 { "documents", documentsStatus },
-                { "todaySubmittedPieces", todaySubmittedPieces }
+                { "todaySubmittedPieces", todaySubmittedPieces },
+                { "videos", videosList }
             });
         }
     }
@@ -1022,6 +1147,7 @@ ORDER BY d.Id ASC";
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
+            EnsureSchemaMigrations(conn);
             int empId = 0;
             string fullName = "";
 
@@ -1152,6 +1278,7 @@ ORDER BY d.Id ASC";
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
+            EnsureSchemaMigrations(conn);
             int empId = 0;
             string fullName = "";
 
@@ -1230,6 +1357,7 @@ VALUES (@empId, @ordId, @opId, @dt, @pcs, 0, 'Pending', @note)", conn))
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
+            EnsureSchemaMigrations(conn);
             int empId = 0;
             using (var cmd = new SqlCommand("SELECT Id FROM [Kipacky].[kipa_Employees] WHERE PinCode = @pin AND IsActive = 1", conn))
             {
@@ -1281,6 +1409,7 @@ VALUES (@empId, @ordId, @opId, @dt, @pcs, 0, 'Pending', @note)", conn))
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
+            EnsureSchemaMigrations(conn);
             int empId = 0;
             using (var cmd = new SqlCommand("SELECT Id FROM [Kipacky].[kipa_Employees] WHERE PinCode = @pin AND IsActive = 1", conn))
             {
@@ -1330,6 +1459,7 @@ VALUES (@empId, @ordId, @opId, @dt, @pcs, 0, 'Pending', @note)", conn))
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
+            EnsureSchemaMigrations(conn);
             int empId = 0;
             using (var cmd = new SqlCommand("SELECT Id FROM [Kipacky].[kipa_Employees] WHERE PinCode = @pin AND IsActive = 1", conn))
             {
@@ -1376,6 +1506,7 @@ VALUES (@empId, @ordId, @opId, @dt, @pcs, 0, 'Pending', @note)", conn))
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
+            EnsureSchemaMigrations(conn);
             int empId = 0;
             using (var cmd = new SqlCommand("SELECT Id FROM [Kipacky].[kipa_Employees] WHERE PinCode = @pin AND IsActive = 1", conn))
             {
@@ -1439,6 +1570,7 @@ WHERE Id = @id", conn))
         using (var conn = new SqlConnection(CONN_STR))
         {
             conn.Open();
+            EnsureSchemaMigrations(conn);
             int empId = 0;
             string fullName = "";
             string contractType = "";
@@ -4715,6 +4847,285 @@ ORDER BY p.[Date] ASC";
         if (val.Contains(";") || val.Contains("\"") || val.Contains("\n") || val.Contains("\r"))
             return "\"" + val.Replace("\"", "\"\"") + "\"";
         return val;
+    }
+
+    private string ExtractYouTubeVideoId(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return "";
+        url = url.Trim();
+        try
+        {
+            Match m1 = Regex.Match(url, @"(?:v=|\/embed\/|youtu\.be\/|\/shorts\/|\/live\/)([a-zA-Z0-9_-]{11})");
+            if (m1.Success) return m1.Groups[1].Value;
+            if (Regex.IsMatch(url, @"^[a-zA-Z0-9_-]{11}$")) return url;
+        }
+        catch { }
+        return "";
+    }
+
+    private void HandleGetVideos(HttpContext context)
+    {
+        int empId = 0;
+        int.TryParse(context.Request.QueryString["employeeId"] ?? "0", out empId);
+        bool includeInactive = (context.Request.QueryString["includeInactive"] ?? "") == "true" || IsAuthenticated(context);
+
+        var list = new List<Dictionary<string, object>>();
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            EnsureSchemaMigrations(conn);
+
+            string sql = @"
+                SELECT v.Id, v.Title, v.Url, v.VideoId, v.Category, v.Description, v.Author, v.ThumbnailUrl, v.Duration, v.IsActive, v.CreatedAt,
+                       (SELECT COUNT(*) FROM [Kipacky].[kipa_VideoViews] vv WHERE vv.VideoId = v.Id) AS ViewsCount,
+                       (SELECT TOP 1 vv2.ViewedAt FROM [Kipacky].[kipa_VideoViews] vv2 WHERE vv2.VideoId = v.Id AND vv2.EmployeeId = @empId ORDER BY vv2.ViewedAt DESC) AS EmployeeViewedAt
+                FROM [Kipacky].[kipa_Videos] v
+                WHERE (@inc = 1 OR v.IsActive = 1)
+                ORDER BY v.IsActive DESC, v.Id ASC";
+
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@empId", empId);
+                cmd.Parameters.AddWithValue("@inc", includeInactive ? 1 : 0);
+                using (var r = cmd.ExecuteReader())
+                {
+                    while (r.Read())
+                    {
+                        string vid = r.IsDBNull(3) ? "" : r.GetString(3);
+                        string url = r.GetString(2);
+                        if (string.IsNullOrEmpty(vid)) vid = ExtractYouTubeVideoId(url);
+                        string thumb = r.IsDBNull(7) ? "" : r.GetString(7);
+                        if (string.IsNullOrEmpty(thumb) && !string.IsNullOrEmpty(vid))
+                        {
+                            thumb = "https://i.ytimg.com/vi/" + vid + "/hqdefault.jpg";
+                        }
+
+                        list.Add(new Dictionary<string, object>
+                        {
+                            { "id", r.GetInt32(0) },
+                            { "title", r.GetString(1) },
+                            { "url", url },
+                            { "videoId", vid },
+                            { "category", r.IsDBNull(4) ? "BOZP a bezpečnost práce" : r.GetString(4) },
+                            { "description", r.IsDBNull(5) ? "" : r.GetString(5) },
+                            { "author", r.IsDBNull(6) ? "" : r.GetString(6) },
+                            { "thumbnailUrl", thumb },
+                            { "duration", r.IsDBNull(8) ? "" : r.GetString(8) },
+                            { "isActive", r.GetBoolean(9) },
+                            { "createdAt", r.GetDateTime(10).ToString("s") },
+                            { "viewsCount", r.IsDBNull(11) ? 0 : r.GetInt32(11) },
+                            { "isWatched", !r.IsDBNull(12) },
+                            { "watchedAt", r.IsDBNull(12) ? null : r.GetDateTime(12).ToString("s") }
+                        });
+                    }
+                }
+            }
+        }
+        SendJson(context, list);
+    }
+
+    private void HandleSaveVideo(HttpContext context)
+    {
+        var data = ReadJsonBody(context);
+        int id = data.ContainsKey("id") && data["id"] != null ? Convert.ToInt32(data["id"]) : 0;
+        string title = data.ContainsKey("title") && data["title"] != null ? Convert.ToString(data["title"]).Trim() : "";
+        string url = data.ContainsKey("url") && data["url"] != null ? Convert.ToString(data["url"]).Trim() : "";
+        string category = data.ContainsKey("category") && data["category"] != null ? Convert.ToString(data["category"]).Trim() : "BOZP a bezpečnost práce";
+        string description = data.ContainsKey("description") && data["description"] != null ? Convert.ToString(data["description"]).Trim() : "";
+        string author = data.ContainsKey("author") && data["author"] != null ? Convert.ToString(data["author"]).Trim() : "";
+        string thumbnailUrl = data.ContainsKey("thumbnailUrl") && data["thumbnailUrl"] != null ? Convert.ToString(data["thumbnailUrl"]).Trim() : "";
+        string duration = data.ContainsKey("duration") && data["duration"] != null ? Convert.ToString(data["duration"]).Trim() : "";
+        bool isActive = !data.ContainsKey("isActive") || data["isActive"] == null || Convert.ToBoolean(data["isActive"]);
+
+        if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(url))
+        {
+            SendError(context, 400, "Zadejte název videa a odkaz (URL).");
+            return;
+        }
+
+        string videoId = data.ContainsKey("videoId") && data["videoId"] != null ? Convert.ToString(data["videoId"]).Trim() : "";
+        if (string.IsNullOrEmpty(videoId))
+        {
+            videoId = ExtractYouTubeVideoId(url);
+        }
+        if (string.IsNullOrEmpty(thumbnailUrl) && !string.IsNullOrEmpty(videoId))
+        {
+            thumbnailUrl = "https://i.ytimg.com/vi/" + videoId + "/hqdefault.jpg";
+        }
+        if (string.IsNullOrEmpty(category))
+        {
+            category = "BOZP a bezpečnost práce";
+        }
+
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            EnsureSchemaMigrations(conn);
+
+            if (id > 0)
+            {
+                string sql = @"
+                    UPDATE [Kipacky].[kipa_Videos]
+                    SET [Title] = @title, [Url] = @url, [VideoId] = @vid, [Category] = @cat,
+                        [Description] = @desc, [Author] = @auth, [ThumbnailUrl] = @thumb,
+                        [Duration] = @dur, [IsActive] = @act
+                    WHERE [Id] = @id";
+                using (var cmd = new SqlCommand(sql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@id", id);
+                    cmd.Parameters.AddWithValue("@title", title);
+                    cmd.Parameters.AddWithValue("@url", url);
+                    cmd.Parameters.AddWithValue("@vid", videoId);
+                    cmd.Parameters.AddWithValue("@cat", category);
+                    cmd.Parameters.AddWithValue("@desc", description);
+                    cmd.Parameters.AddWithValue("@auth", author);
+                    cmd.Parameters.AddWithValue("@thumb", thumbnailUrl);
+                    cmd.Parameters.AddWithValue("@dur", duration);
+                    cmd.Parameters.AddWithValue("@act", isActive);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            else
+            {
+                string sql = @"
+                    INSERT INTO [Kipacky].[kipa_Videos] ([Title], [Url], [VideoId], [Category], [Description], [Author], [ThumbnailUrl], [Duration], [IsActive])
+                    OUTPUT INSERTED.Id
+                    VALUES (@title, @url, @vid, @cat, @desc, @auth, @thumb, @dur, @act)";
+                using (var cmd = new SqlCommand(sql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@title", title);
+                    cmd.Parameters.AddWithValue("@url", url);
+                    cmd.Parameters.AddWithValue("@vid", videoId);
+                    cmd.Parameters.AddWithValue("@cat", category);
+                    cmd.Parameters.AddWithValue("@desc", description);
+                    cmd.Parameters.AddWithValue("@auth", author);
+                    cmd.Parameters.AddWithValue("@thumb", thumbnailUrl);
+                    cmd.Parameters.AddWithValue("@dur", duration);
+                    cmd.Parameters.AddWithValue("@act", isActive);
+                    id = Convert.ToInt32(cmd.ExecuteScalar());
+                }
+            }
+        }
+
+        SendJson(context, new Dictionary<string, object>
+        {
+            { "success", true },
+            { "id", id },
+            { "videoId", videoId }
+        });
+    }
+
+    private void HandleDeleteVideo(HttpContext context)
+    {
+        var data = ReadJsonBody(context);
+        int id = data.ContainsKey("id") && data["id"] != null ? Convert.ToInt32(data["id"]) : 0;
+        if (id == 0) int.TryParse(context.Request.QueryString["id"] ?? "0", out id);
+
+        if (id <= 0)
+        {
+            SendError(context, 400, "Chybí ID videa.");
+            return;
+        }
+
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            EnsureSchemaMigrations(conn);
+            using (var cmd1 = new SqlCommand("DELETE FROM [Kipacky].[kipa_VideoViews] WHERE [VideoId] = @id", conn))
+            {
+                cmd1.Parameters.AddWithValue("@id", id);
+                cmd1.ExecuteNonQuery();
+            }
+            using (var cmd2 = new SqlCommand("DELETE FROM [Kipacky].[kipa_Videos] WHERE [Id] = @id", conn))
+            {
+                cmd2.Parameters.AddWithValue("@id", id);
+                cmd2.ExecuteNonQuery();
+            }
+        }
+
+        SendJson(context, new Dictionary<string, object> { { "success", true } });
+    }
+
+    private void HandleConfirmVideoView(HttpContext context)
+    {
+        var data = ReadJsonBody(context);
+        int videoId = data.ContainsKey("videoId") && data["videoId"] != null ? Convert.ToInt32(data["videoId"]) : 0;
+        int employeeId = data.ContainsKey("employeeId") && data["employeeId"] != null ? Convert.ToInt32(data["employeeId"]) : 0;
+
+        if (videoId <= 0 || employeeId <= 0)
+        {
+            SendError(context, 400, "Chybí ID videa nebo zaměstnance.");
+            return;
+        }
+
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            EnsureSchemaMigrations(conn);
+            string sql = @"
+                IF NOT EXISTS (SELECT 1 FROM [Kipacky].[kipa_VideoViews] WHERE [VideoId] = @vid AND [EmployeeId] = @emp)
+                BEGIN
+                    INSERT INTO [Kipacky].[kipa_VideoViews] ([VideoId], [EmployeeId], [ViewedAt])
+                    VALUES (@vid, @emp, GETDATE());
+                END
+                ELSE
+                BEGIN
+                    UPDATE [Kipacky].[kipa_VideoViews] SET [ViewedAt] = GETDATE() WHERE [VideoId] = @vid AND [EmployeeId] = @emp;
+                END";
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@vid", videoId);
+                cmd.Parameters.AddWithValue("@emp", employeeId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        SendJson(context, new Dictionary<string, object>
+        {
+            { "success", true },
+            { "viewedAt", DateTime.Now.ToString("s") }
+        });
+    }
+
+    private void HandleGetVideoViews(HttpContext context)
+    {
+        int videoId = 0;
+        int.TryParse(context.Request.QueryString["videoId"] ?? "0", out videoId);
+
+        var list = new List<Dictionary<string, object>>();
+        using (var conn = new SqlConnection(CONN_STR))
+        {
+            conn.Open();
+            EnsureSchemaMigrations(conn);
+            string sql = @"
+                SELECT vv.Id, vv.VideoId, v.Title, vv.EmployeeId, e.Name, e.ContractType, vv.ViewedAt
+                FROM [Kipacky].[kipa_VideoViews] vv
+                INNER JOIN [Kipacky].[kipa_Videos] v ON v.Id = vv.VideoId
+                INNER JOIN [Kipacky].[kipa_Employees] e ON e.Id = vv.EmployeeId
+                WHERE (@vid = 0 OR vv.VideoId = @vid)
+                ORDER BY vv.ViewedAt DESC";
+            using (var cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@vid", videoId);
+                using (var r = cmd.ExecuteReader())
+                {
+                    while (r.Read())
+                    {
+                        list.Add(new Dictionary<string, object>
+                        {
+                            { "id", r.GetInt32(0) },
+                            { "videoId", r.GetInt32(1) },
+                            { "videoTitle", r.GetString(2) },
+                            { "employeeId", r.GetInt32(3) },
+                            { "employeeName", r.GetString(4) },
+                            { "contractType", r.GetString(5) },
+                            { "viewedAt", r.GetDateTime(6).ToString("s") }
+                        });
+                    }
+                }
+            }
+        }
+        SendJson(context, list);
     }
 
     private void SendJson(HttpContext context, object data, int statusCode = 200)

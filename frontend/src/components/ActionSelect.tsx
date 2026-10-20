@@ -28,10 +28,12 @@ import {
   AlertOctagon,
   WifiOff,
   Zap,
+  Video,
 } from 'lucide-react';
-import { AttendanceStatusResponse, KioskMonthlySummary } from '../types';
-import { fetchEmployeeMonthlySummary } from '../api/client';
+import { AttendanceStatusResponse, KioskMonthlySummary, VideoItem } from '../types';
+import { fetchEmployeeMonthlySummary, fetchVideos, confirmVideoView } from '../api/client';
 import { DocumentViewerPage } from '../pages/DocumentViewerPage';
+import { KiYoDoVideoCard } from './KiYoDoVideoCard';
 
 interface ActionSelectProps {
   statusData: AttendanceStatusResponse;
@@ -63,8 +65,48 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
   isOnline = true,
 }) => {
   const [subView, setSubView] = useState<
-    'main' | 'production' | 'documents' | 'shifts' | 'profile' | 'monthly-summary'
+    'main' | 'production' | 'documents' | 'shifts' | 'profile' | 'monthly-summary' | 'videos'
   >('main');
+
+  // State pro videa (Fáze 6 - BOZP a školící videa + KiYoDo přehrávač/stahovač)
+  const [videosList, setVideosList] = useState<VideoItem[]>(statusData.videos || []);
+  const [loadingVideos, setLoadingVideos] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (statusData.videos && statusData.videos.length > 0) {
+      setVideosList(statusData.videos);
+    } else if (isOnline && statusData.employeeId) {
+      fetchVideos({ employeeId: statusData.employeeId })
+        .then((vids) => setVideosList(vids))
+        .catch(() => {});
+    }
+  }, [statusData.employeeId, statusData.videos, isOnline]);
+
+  const handleOpenVideos = async () => {
+    setSubView('videos');
+    if (isOnline && statusData.employeeId) {
+      setLoadingVideos(true);
+      try {
+        const vids = await fetchVideos({ employeeId: statusData.employeeId });
+        setVideosList(vids);
+      } catch {
+        // Ponecháme lokální seznam
+      } finally {
+        setLoadingVideos(false);
+      }
+    }
+  };
+
+  const handleConfirmVideoWatched = async (video: VideoItem) => {
+    const res = await confirmVideoView(statusData.employeeId, video.id);
+    setVideosList((prev) =>
+      prev.map((v) =>
+        v.id === video.id
+          ? { ...v, isWatched: true, watchedAt: res.viewedAt || new Date().toISOString() }
+          : v
+      )
+    );
+  };
 
   // State pro měsíční výkaz brigádníka (Fáze 8 / Zadání 04)
   const now = new Date();
@@ -531,6 +573,78 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
               </div>
             ))}
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ====================================================
+  // POHLED 3B: VIDEA & BOZP ŠKOLENÍ (KiYoDo přehrávač + stahovač)
+  // ====================================================
+  if (subView === 'videos') {
+    const unwatchedCount = videosList.filter((v) => !v.isWatched).length;
+
+    return (
+      <div className="flex flex-col w-full max-w-[540px] mx-auto px-1 select-none">
+        <div className="bg-[#193F34] border border-[#426456] rounded-[20px] p-4 sm:p-5 shadow-2xl">
+          <div className="flex items-center justify-between mb-4">
+            <button
+              type="button"
+              onClick={() => setSubView('main')}
+              className="inline-flex items-center gap-1.5 text-xs font-heading font-semibold text-[#C9DDD0] hover:text-[#193F34] hover:bg-[#D7BE97] px-2.5 py-1.5 rounded-[10px] bg-[#285446] border border-[#426456] cursor-pointer transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Zpět
+            </button>
+            <h2 className="text-base font-heading font-bold text-[#F7F3E9] flex items-center gap-2">
+              <Video className="w-5 h-5 text-[#D7BE97]" />
+              Videa a bezpečnost práce
+            </h2>
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center gap-1 text-[11px] font-heading font-bold text-[#FFE0DE] bg-[#A53F4E]/20 hover:bg-[#A53F4E]/35 px-2.5 py-1.5 rounded-[10px] border border-[#A53F4E]/50 cursor-pointer transition-colors"
+              title="Okamžitě se odhlásit a zavřít terminál"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Odhlásit
+            </button>
+          </div>
+
+          <div className="mb-3 px-3.5 py-2.5 rounded-[12px] bg-[#102E26] border border-[#426456] flex items-center justify-between text-xs text-[#C9DDD0]">
+            <span>
+              Celkem videí: <strong className="text-[#F7F3E9]">{videosList.length}</strong>
+            </span>
+            {unwatchedCount > 0 ? (
+              <span className="px-2 py-0.5 rounded-full bg-[#8E4B2F]/30 text-[#FFE0DE] border border-[#B96543] font-semibold">
+                Zbývá zhlédnout: {unwatchedCount}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[#34C790] font-semibold">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Všechna videa zhlédnuta
+              </span>
+            )}
+          </div>
+
+          {loadingVideos ? (
+            <div className="py-8 text-center text-xs text-[#C9DDD0]">Načítám videa...</div>
+          ) : videosList.length === 0 ? (
+            <div className="py-8 text-center text-xs text-[#C9DDD0]">
+              Zatím nejsou k dispozici žádná videa.
+            </div>
+          ) : (
+            <div className="space-y-4 max-h-[68vh] overflow-y-auto pr-1">
+              {videosList.map((vid) => (
+                <KiYoDoVideoCard
+                  key={vid.id}
+                  video={vid}
+                  mode="kiosk"
+                  onConfirmWatch={handleConfirmVideoWatched}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1126,6 +1240,32 @@ export const ActionSelect: React.FC<ActionSelectProps> = ({
           </button>
         )
       )}
+
+      {/* Tlačítko Videa a bezpečnost práce (Fáze 6 - KiYoDo přehrávač & stahování) */}
+      <button
+        type="button"
+        onClick={handleOpenVideos}
+        className={`w-full mb-3 px-3.5 py-2.5 rounded-[14px] flex items-center justify-between text-xs transition-colors cursor-pointer ${
+          videosList.some((v) => !v.isWatched)
+            ? 'bg-[#285446] hover:bg-[#285446]/90 border-2 border-[#D7BE97]/80 text-[#F7F3E9] shadow-md'
+            : 'bg-[#285446] hover:bg-[#285446]/80 border border-[#426456] text-[#F7F3E9]'
+        }`}
+      >
+        <span className="flex items-center gap-2 font-medium">
+          <Video className="w-4 h-4 text-[#D7BE97]" />
+          <span>Videa & Bezpečnost práce ({videosList.length})</span>
+        </span>
+        {videosList.filter((v) => !v.isWatched).length > 0 ? (
+          <span className="px-2 py-0.5 rounded-full bg-[#D7BE97] text-[#193F34] font-heading font-bold text-[11px]">
+            Ke zhlédnutí: {videosList.filter((v) => !v.isWatched).length}
+          </span>
+        ) : (
+          <span className="text-[#34C790] font-heading font-bold text-xs flex items-center gap-1">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            Shlédnuto →
+          </span>
+        )}
+      </button>
 
       {/* Offline upozornění */}
       {!isOnline && (

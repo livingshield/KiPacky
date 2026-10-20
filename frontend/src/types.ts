@@ -126,6 +126,33 @@ export interface KioskDocumentItem {
   needsConsent: boolean;
 }
 
+export interface VideoItem {
+  id: number;
+  title: string;
+  url: string;
+  videoId: string;
+  category: string;
+  description: string;
+  author: string;
+  thumbnailUrl: string;
+  duration?: string;
+  isActive: boolean;
+  createdAt?: string;
+  viewsCount?: number;
+  isWatched?: boolean;
+  watchedAt?: string | null;
+}
+
+export interface VideoViewItem {
+  id: number;
+  videoId: number;
+  videoTitle: string;
+  employeeId: number;
+  employeeName: string;
+  contractType: string;
+  viewedAt: string;
+}
+
 export interface AttendanceStatusResponse {
   employeeId: number;
   fullName: string;
@@ -143,6 +170,7 @@ export interface AttendanceStatusResponse {
   upcomingShifts?: KioskShiftItem[];
   openShifts?: KioskShiftItem[];
   documents?: KioskDocumentItem[];
+  videos?: VideoItem[];
   todaySubmittedPieces?: number;
 }
 

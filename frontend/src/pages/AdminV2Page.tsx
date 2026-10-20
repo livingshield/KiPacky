@@ -50,8 +50,10 @@ import {
   Download,
   FileUp,
   Sparkles,
-  BookOpen
+  BookOpen,
+  Video
 } from 'lucide-react';
+import { AdminVideosSection } from '../components/AdminVideosSection';
 import {
   Employee,
   OrderItem,
@@ -110,7 +112,7 @@ interface AdminV2PageProps {
 }
 
 export const AdminV2Page: React.FC<AdminV2PageProps> = ({ onLogout, onGoToKiosk, onSwitchToV1 }) => {
-  const [activeTab, setActiveTab] = useState<'employees' | 'orders' | 'inventory' | 'attendance' | 'production' | 'admin' | 'reports'>('employees');
+  const [activeTab, setActiveTab] = useState<'employees' | 'orders' | 'inventory' | 'attendance' | 'production' | 'admin' | 'reports' | 'videos'>('employees');
 
   // Zaměstnanci
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -1301,6 +1303,19 @@ export const AdminV2Page: React.FC<AdminV2PageProps> = ({ onLogout, onGoToKiosk,
             >
               <FileSpreadsheet className="w-4 h-4" />
               <span>7. Výkazy & Pásky</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('videos')}
+              className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'videos'
+                  ? 'bg-[#D7BE97] text-[#193F34] font-bold shadow-sm'
+                  : 'text-[#C9DDD0] hover:text-[#F7F3E9]'
+              }`}
+            >
+              <Video className="w-4 h-4" />
+              <span>8. Videa</span>
             </button>
           </nav>
 
@@ -5616,6 +5631,11 @@ export const AdminV2Page: React.FC<AdminV2PageProps> = ({ onLogout, onGoToKiosk,
               </div>
             </div>
           </div>
+        )}
+
+        {/* FÁZE 6: ZÁLOŽKA VIDEA (BOZP & ŠKOLENÍ + KiYoDo PŘEHRÁVAČ A STAHOVAČ) */}
+        {activeTab === 'videos' && (
+          <AdminVideosSection />
         )}
       </main>
 
