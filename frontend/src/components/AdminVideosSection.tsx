@@ -13,6 +13,8 @@ import {
   FolderKanban,
   UserCheck,
   AlertCircle,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { VideoItem, VideoViewItem } from '../types';
 import {
@@ -41,6 +43,7 @@ export const AdminVideosSection: React.FC = () => {
 
   // Filtry
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Formulář pro přidání / úpravu videa
@@ -170,6 +173,34 @@ export const AdminVideosSection: React.FC = () => {
     }
   };
 
+  const handleToggleVisibility = async (video: VideoItem) => {
+    const nextActive = !video.isActive;
+    try {
+      await saveVideo({
+        id: video.id,
+        title: video.title,
+        url: video.url,
+        videoId: video.videoId,
+        category: video.category,
+        author: video.author,
+        description: video.description,
+        thumbnailUrl: video.thumbnailUrl,
+        duration: video.duration,
+        isActive: nextActive,
+      });
+      setVideos((prev) =>
+        prev.map((v) => (v.id === video.id ? { ...v, isActive: nextActive } : v))
+      );
+      setSuccessMsg(
+        nextActive
+          ? `Video "${video.title}" je nyní viditelné pro zaměstnance na kiosku.`
+          : `Video "${video.title}" bylo skryto (zaměstnanci jej neuvidí).`
+      );
+    } catch (err: any) {
+      setError(err?.message || 'Chyba při změně viditelnosti videa');
+    }
+  };
+
   const categories = Array.from(
     new Set([
       ...CATEGORY_PRESETS,
@@ -177,7 +208,12 @@ export const AdminVideosSection: React.FC = () => {
     ])
   );
 
+  const activeCount = videos.filter((v) => v.isActive).length;
+  const inactiveCount = videos.filter((v) => !v.isActive).length;
+
   const filteredVideos = videos.filter((v) => {
+    if (statusFilter === 'active' && !v.isActive) return false;
+    if (statusFilter === 'inactive' && v.isActive) return false;
     if (selectedCategory !== 'ALL' && v.category !== selectedCategory) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -430,44 +466,88 @@ export const AdminVideosSection: React.FC = () => {
         </form>
       )}
 
-      {/* FILTRY KATEGORIÍ A VYHLEDÁVÁNÍ */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setSelectedCategory('ALL')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-              selectedCategory === 'ALL'
-                ? 'bg-indigo-600 text-white shadow'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-            }`}
-          >
-            Všechna videa ({videos.length})
-          </button>
-          {categories.map((cat) => {
-            const count = videos.filter((v) => v.category === cat).length;
-            if (count === 0) return null;
-            return (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setSelectedCategory(cat)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                  selectedCategory === cat
-                    ? 'bg-indigo-600 text-white shadow'
-                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-                }`}
-              >
-                <FolderKanban className="w-3.5 h-3.5" />
-                <span>
-                  {cat} ({count})
-                </span>
-              </button>
-            );
-          })}
+      {/* FILTRY KATEGORIÍ, VIDITELNOSTI A VYHLEDÁVÁNÍ */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Přepínač viditelnosti (Vše / Viditelná pro zaměstnance / Skrytá) */}
+          <div className="flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-700/80">
+            <button
+              type="button"
+              onClick={() => setStatusFilter('all')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                statusFilter === 'all'
+                  ? 'bg-indigo-600 text-white shadow'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Vše ({videos.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('active')}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                statusFilter === 'active'
+                  ? 'bg-emerald-600 text-white shadow'
+                  : 'text-slate-400 hover:text-emerald-300'
+              }`}
+              title="Pouze videa viditelná pro zaměstnance na kiosku"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>Viditelná ({activeCount})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('inactive')}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                statusFilter === 'inactive'
+                  ? 'bg-amber-600 text-white shadow'
+                  : 'text-slate-400 hover:text-amber-300'
+              }`}
+              title="Pouze skrytá videa"
+            >
+              <EyeOff className="w-3.5 h-3.5" />
+              <span>Skrytá ({inactiveCount})</span>
+            </button>
+          </div>
+
+          {/* Kategorie */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setSelectedCategory('ALL')}
+              className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                selectedCategory === 'ALL'
+                  ? 'bg-slate-700 text-white border border-slate-500'
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
+              }`}
+            >
+              Všechny kategorie
+            </button>
+            {categories.map((cat) => {
+              const count = videos.filter((v) => v.category === cat).length;
+              if (count === 0) return null;
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    selectedCategory === cat
+                      ? 'bg-slate-700 text-white border border-slate-500'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
+                  }`}
+                >
+                  <FolderKanban className="w-3.5 h-3.5" />
+                  <span>
+                    {cat} ({count})
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        <div className="relative w-full sm:w-64">
+        <div className="relative w-full md:w-64">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
           <input
             type="text"
@@ -482,7 +562,7 @@ export const AdminVideosSection: React.FC = () => {
       {/* MŘÍŽKA VIDEÍ (KiYoDoVideoCard) */}
       {filteredVideos.length === 0 ? (
         <div className="bg-slate-800/50 border border-slate-700/70 rounded-2xl p-8 text-center text-slate-400 text-sm">
-          Zatím nebyla nalezena žádná videa v této kategorii.
+          Zatím nebyla nalezena žádná videa v tomto zobrazení.
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -494,6 +574,7 @@ export const AdminVideosSection: React.FC = () => {
               onEdit={handleOpenEdit}
               onDelete={handleDelete}
               onShowViewers={(v) => setSelectedVideoForViews(v)}
+              onToggleVisibility={handleToggleVisibility}
             />
           ))}
         </div>

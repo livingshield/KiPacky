@@ -20,6 +20,8 @@ import {
   Subtitles,
   AlertCircle,
   Loader2,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { VideoItem } from '../types';
 import { extractYouTubeId } from '../api/client';
@@ -31,6 +33,7 @@ interface KiYoDoVideoCardProps {
   onEdit?: (video: VideoItem) => void;
   onDelete?: (video: VideoItem) => void;
   onShowViewers?: (video: VideoItem) => void;
+  onToggleVisibility?: (video: VideoItem) => Promise<void>;
 }
 
 export const KiYoDoVideoCard: React.FC<KiYoDoVideoCardProps> = ({
@@ -40,6 +43,7 @@ export const KiYoDoVideoCard: React.FC<KiYoDoVideoCardProps> = ({
   onEdit,
   onDelete,
   onShowViewers,
+  onToggleVisibility,
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioOnlyMode, setAudioOnlyMode] = useState(false);
@@ -52,6 +56,7 @@ export const KiYoDoVideoCard: React.FC<KiYoDoVideoCardProps> = ({
   const [serverError, setServerError] = useState<string | null>(null);
   const [copiedPs, setCopiedPs] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [togglingVisibility, setTogglingVisibility] = useState(false);
 
   const videoId = video.videoId || extractYouTubeId(video.url) || '';
   const thumbnailUrl =
@@ -345,17 +350,44 @@ export const KiYoDoVideoCard: React.FC<KiYoDoVideoCardProps> = ({
                 {video.category || 'BOZP a bezpečnost práce'}
               </span>
 
-              {video.isWatched ? (
+              {mode === 'admin' ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onToggleVisibility && !togglingVisibility) {
+                      setTogglingVisibility(true);
+                      onToggleVisibility(video).finally(() => setTogglingVisibility(false));
+                    }
+                  }}
+                  disabled={togglingVisibility}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold shadow backdrop-blur-md transition-all cursor-pointer ${
+                    video.isActive
+                      ? 'bg-emerald-600/90 hover:bg-emerald-500 text-white border border-emerald-400'
+                      : 'bg-stone-800/90 hover:bg-stone-700 text-amber-300 border border-amber-500/50'
+                  }`}
+                  title="Klikněte pro zapnutí/vypnutí viditelnosti pro zaměstnance"
+                >
+                  {togglingVisibility ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : video.isActive ? (
+                    <Eye className="w-3.5 h-3.5" />
+                  ) : (
+                    <EyeOff className="w-3.5 h-3.5" />
+                  )}
+                  <span>{video.isActive ? 'Viditelné pro zaměstnance' : 'Skryté (pouze admin)'}</span>
+                </button>
+              ) : video.isWatched ? (
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-600/95 text-white shadow">
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   Shlédnuto
                 </span>
-              ) : mode === 'kiosk' ? (
+              ) : (
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/95 text-slate-950 shadow">
                   <Clock className="w-3.5 h-3.5" />
                   Ke zhlédnutí
                 </span>
-              ) : null}
+              )}
             </div>
 
             {/* Velké centrální tlačítko Play */}
@@ -620,15 +652,45 @@ export const KiYoDoVideoCard: React.FC<KiYoDoVideoCardProps> = ({
 
         {/* ADMIN: Správa videa a statistika zhlédnutí */}
         {mode === 'admin' && (
-          <div className="pt-2 border-t border-slate-700/70 flex items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={() => onShowViewers && onShowViewers(video)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-700/60 hover:bg-slate-700 text-slate-200 transition-all"
-            >
-              <Users className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Zhlédlo: {video.viewsCount ?? 0} zam.</span>
-            </button>
+          <div className="pt-2 border-t border-slate-700/70 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onShowViewers && onShowViewers(video)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-700/60 hover:bg-slate-700 text-slate-200 transition-all"
+              >
+                <Users className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Zhlédlo: {video.viewsCount ?? 0} zam.</span>
+              </button>
+
+              {onToggleVisibility && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!togglingVisibility) {
+                      setTogglingVisibility(true);
+                      onToggleVisibility(video).finally(() => setTogglingVisibility(false));
+                    }
+                  }}
+                  disabled={togglingVisibility}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                    video.isActive
+                      ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/30'
+                      : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/30'
+                  }`}
+                  title="Klikněte pro zapnutí/vypnutí viditelnosti pro zaměstnance"
+                >
+                  {togglingVisibility ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : video.isActive ? (
+                    <Eye className="w-3.5 h-3.5" />
+                  ) : (
+                    <EyeOff className="w-3.5 h-3.5" />
+                  )}
+                  <span>{video.isActive ? 'Viditelné' : 'Skryté'}</span>
+                </button>
+              )}
+            </div>
 
             <div className="flex items-center gap-1.5">
               {onEdit && (
